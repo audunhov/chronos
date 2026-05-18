@@ -124,7 +124,6 @@ func TestDST_ProjectionConsistency(t *testing.T) {
 	}
 
 	// Compare using DeepEqual
-	// Note: We need to normalize time for comparison
 	m_copy := *m
 	replayed_copy := *replayed
 	
@@ -142,5 +141,92 @@ func TestDST_ProjectionConsistency(t *testing.T) {
 	}
 	if m.Name != "REDACTED" {
 		t.Errorf("Expected name REDACTED, got %s", m.Name)
+	}
+}
+
+func TestDST_MultiMemberIsolationAndReplay(t *testing.T) {
+	rng := rand.New(rand.NewSource(42)) // Fixed seed
+	
+	numMembers := 10
+	numOrgs := 3
+	orgs := make([]string, numOrgs)
+	for i := 0; i < numOrgs; i++ {
+		orgs[i] = fmt.Sprintf("org-%d", i)
+	}
+
+	type storedEvent struct {
+		id        string
+		eventType string
+		payload   []byte
+		ts        time.Time
+	}
+	var allEvents []storedEvent
+	groundTruth := make(map[string]*domain.Member)
+	currentTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	
+	for i := 0; i < 500; i++ {
+		currentTime = currentTime.Add(time.Duration(rng.Intn(10)) * time.Minute)
+		memberIdx := rng.Intn(numMembers)
+		memberID := fmt.Sprintf("member-%d", memberIdx)
+		
+		var ev domain.Event
+		var eventType string
+		m, exists := groundTruth[memberID]
+		
+		if !exists {
+			reg := domain.MemberRegistered{
+				ID:        memberID,
+				Name:      fmt.Sprintf("Member %d", memberIdx),
+				Email:     fmt.Sprintf("m%d@example.com", memberIdx),
+				OrgID:     orgs[rng.Intn(numOrgs)],
+				Timestamp: currentTime,
+			}
+			ev = reg
+			eventType = domain.EventTypeMemberRegistered
+			groundTruth[memberID] = &domain.Member{}
+		} else if m.Status == "SHREDDED" {
+			continue
+		} else if rng.Intn(10) == 0 {
+			ev = domain.MemberShredded{ID: memberID, Timestamp: currentTime}
+			eventType = domain.EventTypeMemberShredded
+		} else {
+			fields := make(map[string]any)
+			fields["name"] = fmt.Sprintf("Updated Name %d", i)
+			ev = domain.MemberUpdated{ID: memberID, UpdatedFields: fields, Timestamp: currentTime}
+			eventType = domain.EventTypeMemberUpdated
+		}
+		
+		domain.ApplyEvent(groundTruth[memberID], ev)
+		payload, _ := json.Marshal(ev)
+		allEvents = append(allEvents, storedEvent{id: memberID, eventType: eventType, payload: payload, ts: currentTime})
+	}
+
+	view1 := make(InMemoryView)
+	for _, e := range allEvents {
+		view1.Apply(e.id, e.eventType, e.payload, e.ts)
+	}
+
+	view2 := make(InMemoryView)
+	for _, e := range allEvents {
+		view2.Apply(e.id, e.eventType, e.payload, e.ts)
+	}
+
+	for id, expected := range groundTruth {
+		actual1 := view1[id]
+		actual2 := view2[id]
+		
+		expected.CreatedAt = time.Time{}
+		expected.UpdatedAt = time.Time{}
+		actual1.CreatedAt = time.Time{}
+		actual1.UpdatedAt = time.Time{}
+		actual2.CreatedAt = time.Time{}
+		actual2.UpdatedAt = time.Time{}
+
+		if !reflect.DeepEqual(actual1, expected) {
+			t.Errorf("Isolation error for member %s", id)
+		}
+		if !reflect.DeepEqual(actual1, actual2) {
+			t.Errorf("Determinism error for member %s", id)
+		}
 	}
 }

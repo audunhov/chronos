@@ -1,114 +1,69 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Medlemsregister Integrasjon', () => {
+test.describe('Medlemsregister E2E', () => {
+  const workerId = Math.random().toString(36).substring(7)
+  const testEmail = `admin-${workerId}@example.com`
+  const testPassword = 'Password123!'
+  const testOrg = `org-${workerId}`
+
   test.beforeEach(async ({ page }) => {
-    // Mock Supabase session for å hoppe over innlogging
-    await page.route('**/auth/v1/session', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          access_token: 'fake-token',
-          user: { email: 'test@example.com' }
-        }),
-      });
-    });
-
-    // Mock API-kall for medlemmer
-    await page.route('**/api/members', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            ID: 'uuid-1',
-            Name: 'Ola Nordmann',
-            Email: 'ola@example.com',
-            Status: 'ACTIVE',
-            Balance: 0,
-            Metadata: {}
-          },
-          {
-            ID: 'uuid-2',
-            Name: 'Kari Nordmann',
-            Email: 'kari@example.com',
-            Status: 'ACTIVE',
-            Balance: 50000,
-            Metadata: {}
-          }
-        ]),
-      });
-    });
-  });
-
-  test('skal vise medlemslisten ved oppstart (innlogget)', async ({ page }) => {
-    // Vi må simulere at brukeren er innlogget i localStorage for supabase-js
-    await page.addInitScript(() => {
-      const session = {
-        access_token: 'fake-token',
-        user: { email: 'test@example.com' }
-      };
-      window.localStorage.setItem('sb-localhost-auth-token', JSON.stringify(session));
-    });
-
-    await page.goto('/');
-
-    await expect(page.locator('h1')).toContainText('Medlemsregister');
-    await expect(page.getByText('Ola Nordmann')).toBeVisible();
-    await expect(page.getByText('500.00 kr')).toBeVisible(); // Kari sin saldo
-  });
-
-  test('skal kunne registrere et nytt medlem', async ({ page }) => {
-    await page.addInitScript(() => {
-      const session = { access_token: 'fake-token', user: { email: 'test@example.com' } };
-      window.localStorage.setItem('sb-localhost-auth-token', JSON.stringify(session));
-    });
+    await page.goto('/')
+    await page.getByPlaceholder('E-post').fill(testEmail)
+    await page.getByPlaceholder('Passord').fill(testPassword)
+    await page.getByPlaceholder('Organisasjons-ID (valgfritt)').fill(testOrg)
     
-    await page.goto('/');
+    const dialogPromise = page.waitForEvent('dialog')
+    await page.getByRole('button', { name: 'Registrer' }).click()
+    const dialog = await dialogPromise
+    await dialog.accept()
 
-    await page.route('**/api/commands/register-member', async (route) => {
-      await route.fulfill({ status: 201, body: JSON.stringify({ id: 'uuid-3' }) });
-    });
+    await page.getByPlaceholder('E-post').fill(testEmail)
+    await page.getByPlaceholder('Passord').fill(testPassword)
+    await page.getByRole('button', { name: 'Logg inn' }).click()
 
+    await expect(page.getByText('Medlemsregister')).toBeVisible()
+  });
+
+  test('skal kunne registrere et nytt medlem og se det i listen', async ({ page }) => {
     await page.getByRole('button', { name: 'Nytt medlem' }).click();
     
-    await page.locator('#name').fill('Berit Bø');
-    await page.locator('#email').fill('berit@example.com');
-    await page.locator('#birth_year').fill('1995');
-    
-    await page.getByRole('button', { name: 'Registrer medlem' }).click();
+    const memberName = `Berit Bø ${Math.random().toString(36).substring(7)}`
+    const memberEmail = `berit-${workerId}@example.com`
 
-    // Verifiser at API-kall ble gjort (kan gjøres mer eksplisitt, men her sjekker vi UI-respons)
-    await expect(page.getByText('Berit Bø')).toBeVisible();
+    await page.locator('#name').fill(memberName);
+    await page.locator('#email').fill(memberEmail);
+    await page.locator('#birth_year').fill('1995');
+    await page.locator('#org_id').fill(testOrg);
+    
+    const registerPromise = page.waitForResponse(resp => resp.url().includes('/commands/register-member') && resp.status() === 201)
+    await page.getByRole('button', { name: 'Registrer medlem' }).click();
+    await registerPromise
+
+    await page.getByTitle('Oppdater liste').click()
+    await expect(page.getByText(memberName).first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('skal kunne utføre crypto-shredding', async ({ page }) => {
-    await page.addInitScript(() => {
-      const session = { access_token: 'fake-token', user: { email: 'test@example.com' } };
-      window.localStorage.setItem('sb-localhost-auth-token', JSON.stringify(session));
-    });
+  test('skal kunne utføre crypto-shredding (GDPR glem)', async ({ page }) => {
+    const deleteName = `Slette-meg ${Math.random().toString(36).substring(7)}`
     
-    await page.goto('/');
+    await page.getByRole('button', { name: 'Nytt medlem' }).click();
+    await page.locator('#name').fill(deleteName);
+    await page.locator('#email').fill(`delete-${workerId}@example.com`);
+    await page.locator('#birth_year').fill('1980');
+    await page.locator('#org_id').fill(testOrg);
+    
+    const registerPromise = page.waitForResponse(resp => resp.url().includes('/commands/register-member') && resp.status() === 201)
+    await page.getByRole('button', { name: 'Registrer medlem' }).click();
+    await registerPromise
 
-    await page.route('**/api/commands/shred-member', async (route) => {
-      await route.fulfill({ status: 200 });
-    });
+    await page.getByTitle('Oppdater liste').click()
+    await expect(page.getByText(deleteName).first()).toBeVisible();
 
-    // Mock oppdatert liste etter shredding
-    await page.route('**/api/members', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          { ID: 'uuid-1', Name: 'REDACTED', Email: 'redacted@example.com', Status: 'SHREDDED', Balance: 0 }
-        ]),
-      });
-    });
+    page.on('dialog', d => d.accept());
+    await page.locator('tr').filter({ hasText: deleteName }).getByText('Glem (GDPR)').click();
 
-    page.on('dialog', dialog => dialog.accept());
-    await page.getByText('Glem (GDPR)').first().click();
-
-    await expect(page.getByText('REDACTED')).toBeVisible();
-    await expect(page.getByText('SHREDDED')).toBeVisible();
+    await page.getByTitle('Oppdater liste').click()
+    await expect(page.getByText('REDACTED').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('SHREDDED').first()).toBeVisible();
   });
 });

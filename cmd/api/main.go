@@ -37,17 +37,21 @@ func main() {
 	
 	// API routes with Auth Middleware
 	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("GET /members", server.GetMembersHandler)
-	apiMux.HandleFunc("GET /organizations", server.GetOrganizationsHandler)
-	apiMux.HandleFunc("POST /commands/register-member", server.RegisterMemberHandler)
-	apiMux.HandleFunc("POST /commands/update-member", server.UpdateMemberHandler)
-	apiMux.HandleFunc("POST /commands/shred-member", server.ShredMemberHandler)
-	apiMux.HandleFunc("GET /reports/as-of", server.GetMembersAsOfHandler)
+	apiMux.HandleFunc("/members", server.GetMembersHandler)
+	apiMux.HandleFunc("/organizations", server.GetOrganizationsHandler)
+	apiMux.HandleFunc("/commands/register-member", server.RegisterMemberHandler)
+	apiMux.HandleFunc("/commands/update-member", server.UpdateMemberHandler)
+	apiMux.HandleFunc("/commands/shred-member", server.ShredMemberHandler)
+	apiMux.HandleFunc("/reports/as-of", server.GetMembersAsOfHandler)
 	
 	// Auth routes (Public)
-	mux.HandleFunc("GET /api/health", server.HealthHandler)
-	mux.HandleFunc("POST /api/auth/signup", server.SignupHandler)
-	mux.HandleFunc("POST /api/auth/login", server.LoginHandler)
+	mux.HandleFunc("/api/health/", server.HealthHandler)
+	mux.HandleFunc("/swagger/", server.SwaggerHandler)
+	mux.HandleFunc("/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "openapi.yaml")
+	})
+	mux.HandleFunc("/api/auth/signup", server.SignupHandler)
+	mux.HandleFunc("/api/auth/login", server.LoginHandler)
 
 	// Apply Auth Middleware to all /api/ routes
 	// Also apply CORS Middleware to the entire mux

@@ -28,11 +28,11 @@ services:
     image: golang:1.25-alpine
     working_dir: /app
     ports:
-      - "8080:8080"
+      - "8085:8085"
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-password}@db:5432/postgres?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
-      PORT: "8080"
+      PORT: "8085"
     volumes:
       - .:/app
     command: sh -c "go install github.com/air-verse/air@latest && air"
@@ -40,7 +40,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8085/api/health/"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -51,7 +51,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://backend:8080
+      VITE_API_URL: http://backend:8085
     volumes:
       - ./frontend:/app
       - /app/node_modules

@@ -2,18 +2,9 @@
 import { ref, onMounted, watch } from 'vue'
 import { api } from './services/api'
 import { auth, logout } from './services/auth'
+import type { Member } from './api'
 import RegisterForm from './components/RegisterForm.vue'
 import LoginForm from './components/LoginForm.vue'
-
-interface Member {
-  id: string
-  org_id: string
-  name: string
-  email: string
-  status: string
-  metadata: any
-  balance: number
-}
 
 const members = ref<Member[]>([])
 const organizations = ref<string[]>([])

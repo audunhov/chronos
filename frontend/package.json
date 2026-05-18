@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate-api": "openapi --input ../openapi.yaml --output ./src/api --client fetch",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "test:e2e": "CI=true playwright test",
@@ -36,6 +37,7 @@
     "eslint-plugin-vue": "~10.8.0",
     "jiti": "^2.6.1",
     "npm-run-all2": "^8.0.4",
+    "openapi-typescript-codegen": "^0.30.0",
     "oxfmt": "^0.45.0",
     "oxlint": "~1.60.0",
     "postcss": "^8.5.14",

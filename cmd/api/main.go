@@ -38,12 +38,19 @@ func main() {
 	// API routes with Auth Middleware
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /members", server.GetMembersHandler)
+	apiMux.HandleFunc("GET /organizations", server.GetOrganizationsHandler)
 	apiMux.HandleFunc("POST /commands/register-member", server.RegisterMemberHandler)
 	apiMux.HandleFunc("POST /commands/update-member", server.UpdateMemberHandler)
 	apiMux.HandleFunc("POST /commands/shred-member", server.ShredMemberHandler)
 	apiMux.HandleFunc("GET /reports/as-of", server.GetMembersAsOfHandler)
 	
+	// Auth routes (Public)
+	mux.HandleFunc("GET /api/health", server.HealthHandler)
+	mux.HandleFunc("POST /api/auth/signup", server.SignupHandler)
+	mux.HandleFunc("POST /api/auth/login", server.LoginHandler)
+
 	// Apply Auth Middleware to all /api/ routes
+	// Also apply CORS Middleware to the entire mux
 	mux.Handle("/api/", http.StripPrefix("/api", api.AuthMiddleware(apiMux)))
 
 	port := os.Getenv("PORT")
@@ -53,7 +60,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: api.CORSMiddleware(mux),
 	}
 
 	// Graceful shutdown

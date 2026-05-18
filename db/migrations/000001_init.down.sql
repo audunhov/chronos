@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS encryption_keys;
+DROP TABLE IF EXISTS member_view;
+DROP TABLE IF EXISTS organization_hierarchy;
+DROP TABLE IF EXISTS event_store;
+DROP TABLE IF EXISTS users;
+DROP EXTENSION IF EXISTS ltree;
+DROP EXTENSION IF EXISTS "uuid-ossp";

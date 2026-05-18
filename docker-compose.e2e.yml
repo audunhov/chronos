@@ -1,0 +1,16 @@
+services:
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    environment:
+      - CI=true
+      - BASE_URL=http://frontend:5173
+    networks:
+      - chronos_default
+    command: sh -c "npm install && npx playwright test e2e/auth_integration.spec.ts --project=chromium"
+
+networks:
+  chronos_default:
+    external: true

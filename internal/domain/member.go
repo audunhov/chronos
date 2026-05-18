@@ -12,16 +12,16 @@ type Event interface {
 
 // Member struct represents the current state of a member
 type Member struct {
-	ID         string
-	OrgID      string
-	Name       string
-	Email      string
-	Status     string
-	Metadata   map[string]any
-	Balance    int            // I øre/cent
-	FeeFormula string         // F.eks. "FIXED:500" eller "PERCENT:1.5"
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID         string         `json:"id"`
+	OrgID      string         `json:"org_id"`
+	Name       string         `json:"name"`
+	Email      string         `json:"email"`
+	Status     string         `json:"status"`
+	Metadata   map[string]any `json:"metadata"`
+	Balance    int            `json:"balance"`
+	FeeFormula string         `json:"fee_formula"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
 }
 
 // Constants for event types

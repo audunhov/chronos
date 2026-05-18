@@ -1,51 +1,71 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { api } from './services/api'
-import { supabase } from './services/supabase'
+import { auth, logout } from './services/auth'
 import RegisterForm from './components/RegisterForm.vue'
 import LoginForm from './components/LoginForm.vue'
 
 interface Member {
-  ID: string
-  OrgID: string
-  Name: string
-  Email: string
-  Status: string
-  Metadata: any
-  Balance: number
+  id: string
+  org_id: string
+  name: string
+  email: string
+  status: string
+  metadata: any
+  balance: number
 }
 
-const session = ref<any>(null)
 const members = ref<Member[]>([])
+const organizations = ref<string[]>([])
+const selectedOrg = ref('')
 const loading = ref(false)
 const error = ref('')
 const selectedDate = ref('')
 const showModal = ref(false)
 
-const fetchMembers = async () => {
-  if (!session.value) return
-  loading.value = true
+const fetchMembers = async (silent = false) => {
+  if (!auth.user) {
+    members.value = []
+    return
+  }
+  if (!silent) loading.value = true
   error.value = ''
   try {
+    let data: any
     if (selectedDate.value) {
-      members.value = await api.getMembersAsOf(selectedDate.value)
+      data = await api.getMembersAsOf(selectedDate.value, selectedOrg.value)
     } else {
-      members.value = await api.getMembers()
+      data = await api.getMembers(selectedOrg.value)
     }
+    members.value = Array.isArray(data) ? data : []
   } catch (e: any) {
-    error.value = e.message
+    if (!silent) {
+      console.error('Fetch members failed:', e)
+      error.value = e.message
+    }
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
-const handleLogout = async () => {
-  await supabase.auth.signOut()
+const fetchOrganizations = async () => {
+  if (!auth.user) return
+  try {
+    const data = await api.getOrganizations()
+    organizations.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.error('Failed to fetch orgs:', e)
+  }
+}
+
+const handleLogout = () => {
+  logout()
 }
 
 const onMemberRegistered = () => {
   showModal.value = false
   fetchMembers()
+  fetchOrganizations()
 }
 
 const shredMember = async (id: string) => {
@@ -58,25 +78,32 @@ const shredMember = async (id: string) => {
   }
 }
 
-watch(selectedDate, () => {
+// Reager på endringer i filtere
+watch([selectedDate, selectedOrg], () => {
   fetchMembers()
 })
 
-onMounted(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    session.value = data.session
-  })
+// Reager på innlogging/utlogging
+watch(() => auth.user, (newUser) => {
+  if (newUser) {
+    fetchMembers()
+    fetchOrganizations()
+  } else {
+    members.value = []
+    organizations.value = []
+  }
+}, { immediate: true })
 
-  supabase.auth.onAuthStateChange((_event, _session) => {
-    session.value = _session
-    if (_session) fetchMembers()
-    else members.value = []
-  })
+onMounted(() => {
+  if (auth.user) {
+    fetchMembers()
+    fetchOrganizations()
+  }
 })
 </script>
 
 <template>
-  <div v-if="!session">
+  <div v-if="!auth.user">
     <LoginForm />
   </div>
   <div v-else class="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -84,9 +111,31 @@ onMounted(() => {
       <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
         <div>
           <h1 class="text-3xl font-bold text-gray-900">Medlemsregister</h1>
-          <p class="mt-2 text-sm text-gray-700">Innlogget som: {{ session.user.email }}</p>
+          <p class="mt-2 text-sm text-gray-700" v-if="auth.user">Innlogget som: {{ auth.user.email }}</p>
         </div>
         <div class="mt-4 md:mt-0 flex flex-wrap gap-3 items-center">
+          <button
+            @click="fetchMembers()"
+            class="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
+            title="Oppdater liste"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+            </svg>
+          </button>
+
+          <div class="flex items-center space-x-2 bg-white p-2 rounded-md shadow-sm border border-gray-200">
+            <label for="org-select" class="text-xs font-semibold text-gray-500 uppercase">Organisasjon</label>
+            <select 
+              id="org-select"
+              v-model="selectedOrg"
+              class="block rounded border-gray-300 text-sm focus:ring-indigo-500"
+            >
+              <option value="">Alle (Global)</option>
+              <option v-for="org in organizations" :key="org" :value="org">{{ org }}</option>
+            </select>
+          </div>
+
           <div class="flex items-center space-x-2 bg-white p-2 rounded-md shadow-sm border border-gray-200">
             <label for="date" class="text-xs font-semibold text-gray-500 uppercase">Tidsmaskin</label>
             <input 
@@ -122,7 +171,7 @@ onMounted(() => {
         <p class="text-sm text-red-700">{{ error }}</p>
       </div>
 
-      <div class="bg-white shadow overflow-hidden sm:rounded-lg border border-gray-200">
+      <div v-if="members" class="bg-white shadow overflow-hidden sm:rounded-lg border border-gray-200">
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
@@ -135,38 +184,41 @@ onMounted(() => {
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
             <tr v-if="loading" class="animate-pulse">
-              <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">Laster data fra uforanderlig logg...</td>
+              <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">Laster data...</td>
             </tr>
-            <tr v-else v-for="member in members" :key="member.ID">
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">{{ member.Name }}</div>
-                <div class="text-xs text-gray-400 font-mono">{{ member.ID }}</div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ member.Email }}</td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span :class="[
-                  'px-2 py-1 text-xs font-semibold rounded-full',
-                  member.Status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 
-                  member.Status === 'SHREDDED' ? 'bg-gray-100 text-gray-500' : 'bg-red-100 text-red-800'
-                ]">
-                  {{ member.Status }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                {{ (member.Balance / 100).toFixed(2) }} kr
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button 
-                  v-if="member.Status !== 'SHREDDED'"
-                  @click="shredMember(member.ID)"
-                  class="text-red-600 hover:text-red-900"
-                >
-                  Glem (GDPR)
-                </button>
-              </td>
-            </tr>
-            <tr v-if="!loading && members.length === 0">
-              <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">Ingen medlemmer i dette hierarkiet.</td>
+            <template v-else-if="members && members.length > 0">
+              <tr v-for="member in members" :key="member.id">
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="text-sm font-medium text-gray-900">{{ member.name }}</div>
+                  <div class="text-xs text-gray-400 font-mono">{{ member.id }}</div>
+                  <div class="text-xs text-indigo-500 font-semibold">{{ member.org_id }}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ member.email }}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span :class="[
+                    'px-2 py-1 text-xs font-semibold rounded-full',
+                    member.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 
+                    member.status === 'SHREDDED' ? 'bg-gray-100 text-gray-500' : 'bg-red-100 text-red-800'
+                  ]">
+                    {{ member.status }}
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                  {{ ((member.balance || 0) / 100).toFixed(2) }} kr
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button 
+                    v-if="member.status !== 'SHREDDED'"
+                    @click="shredMember(member.id)"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    Glem (GDPR)
+                  </button>
+                </td>
+              </tr>
+            </template>
+            <tr v-else-if="!loading">
+              <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">Ingen medlemmer funnet.</td>
             </tr>
           </tbody>
         </table>
@@ -174,13 +226,10 @@ onMounted(() => {
     </div>
 
     <!-- Register Modal -->
-    <div v-if="showModal" class="fixed inset-0 z-10 overflow-y-auto">
-      <div class="flex min-h-screen items-end justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75" @click="showModal = false"></div>
-        <span class="hidden sm:inline-block sm:h-screen sm:align-middle">&#8203;</span>
-        <div class="inline-block transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6 sm:align-middle">
-          <RegisterForm @registered="onMemberRegistered" @cancel="showModal = false" />
-        </div>
+    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showModal = false"></div>
+      <div class="relative bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full sm:p-6">
+        <RegisterForm @registered="onMemberRegistered" @cancel="showModal = false" />
       </div>
     </div>
   </div>

@@ -1,10 +1,9 @@
-import { supabase } from './supabase';
+import { auth, setAuth } from './auth';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+const API_BASE = '/api';
 
-async function request(path: string, options: RequestInit = {}) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+async function request(path: string, options: RequestInit = {}, orgId?: string) {
+    const token = auth.token;
     
     const headers = {
         'Content-Type': 'application/json',
@@ -15,6 +14,10 @@ async function request(path: string, options: RequestInit = {}) {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
+    if (orgId) {
+        headers['X-Org-ID'] = orgId;
+    }
+
     const response = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers,
@@ -22,6 +25,9 @@ async function request(path: string, options: RequestInit = {}) {
 
     if (!response.ok) {
         const error = await response.text();
+        if (response.status === 401) {
+            setAuth(null, null);
+        }
         throw new Error(error || response.statusText);
     }
 
@@ -30,8 +36,21 @@ async function request(path: string, options: RequestInit = {}) {
 }
 
 export const api = {
-    getMembers: () => request('/members'),
-    getMembersAsOf: (date: string) => request(`/reports/as-of?date=${date}`),
+    signup: (data: any) => request('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+    login: async (data: any) => {
+        const res = await request('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+        setAuth(res.user, res.access_token);
+        return res;
+    },
+    getMembers: (orgId?: string) => request('/members', {}, orgId),
+    getMembersAsOf: (date: string, orgId?: string) => request(`/reports/as-of?date=${date}`, {}, orgId),
+    getOrganizations: () => request('/organizations'),
     registerMember: (data: { name: string; email: string; org_id?: string; metadata?: any }) => 
         request('/commands/register-member', {
             method: 'POST',

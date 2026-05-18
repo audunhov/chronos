@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"register/internal/domain"
 	"register/internal/reports"
@@ -21,25 +22,34 @@ func NewServer(db *sql.DB, es *storage.EventStore) *Server {
 	return &Server{db: db, eventStore: es}
 }
 
+func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
 func (s *Server) GetMembersHandler(w http.ResponseWriter, r *http.Request) {
-	orgID, ok := r.Context().Value(OrgIDKey).(string)
-	if !ok || orgID == "" {
-		http.Error(w, "Unauthorized: No OrgID", http.StatusUnauthorized)
-		return
+	orgID, _ := r.Context().Value(OrgIDKey).(string)
+
+	query := "SELECT id, org_id, name, email, status, metadata FROM member_view"
+	var args []any
+
+	if orgID != "" {
+		query += " WHERE org_id = $1"
+		args = append(args, orgID)
 	}
 
-	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name, email, status, metadata FROM member_view")
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var members []domain.Member
+	var members = []domain.Member{}
 	for rows.Next() {
 		var m domain.Member
 		var metadata []byte
-		if err := rows.Scan(&m.ID, &m.Name, &m.Email, &m.Status, &metadata); err != nil {
+		if err := rows.Scan(&m.ID, &m.OrgID, &m.Name, &m.Email, &m.Status, &metadata); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -47,8 +57,33 @@ func (s *Server) GetMembersHandler(w http.ResponseWriter, r *http.Request) {
 		members = append(members, m)
 	}
 
+	// DEBUG LOG
+	fmt.Printf("GetMembersHandler: Found %d members for OrgID: '%s'\n", len(members), orgID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(members)
+}
+
+
+func (s *Server) GetOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.QueryContext(r.Context(), "SELECT DISTINCT org_id::text FROM member_view UNION SELECT id::text FROM organization_hierarchy")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var orgs []string
+	for rows.Next() {
+		var org string
+		if err := rows.Scan(&org); err != nil {
+			continue
+		}
+		orgs = append(orgs, org)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(orgs)
 }
 
 type RegisterMemberRequest struct {
@@ -59,11 +94,8 @@ type RegisterMemberRequest struct {
 }
 
 func (s *Server) RegisterMemberHandler(w http.ResponseWriter, r *http.Request) {
-	userOrgID, ok := r.Context().Value(OrgIDKey).(string)
-	if !ok || userOrgID == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userOrgID, _ := r.Context().Value(OrgIDKey).(string)
+	// Fjernet streng sjekk på userOrgID for å tillate globale admins å registrere medlemmer
 
 	var req RegisterMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -176,9 +208,11 @@ func (s *Server) GetMembersAsOfHandler(w http.ResponseWriter, r *http.Request) {
 
 	userOrgID, _ := r.Context().Value(OrgIDKey).(string)
 
-	var members []domain.Member
+	var members = []domain.Member{}
 	for _, m := range membersMap {
-		if m.OrgID == userOrgID {
+		// Hvis userOrgID er tom, er det en global admin som kan se alt.
+		// Ellers må org_id matche.
+		if userOrgID == "" || m.OrgID == userOrgID {
 			members = append(members, *m)
 		}
 	}

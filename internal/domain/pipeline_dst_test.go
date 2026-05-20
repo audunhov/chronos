@@ -3,103 +3,149 @@ package domain
 import (
 	"fmt"
 	"math/rand"
+	"reflect"
 	"testing"
 )
 
 func TestPipelineDST(t *testing.T) {
 	// Standard DST pattern: run multiple simulations with different seeds
-	for seed := int64(0); seed < 100; seed++ {
+	for seed := int64(1); seed <= 50; seed++ {
 		t.Run(fmt.Sprintf("Seed_%d", seed), func(t *testing.T) {
-			simulatePipeline(t, seed)
+			simulateRandomPipeline(t, seed)
 		})
 	}
 }
 
-func simulatePipeline(t *testing.T, seed int64) {
+func simulateRandomPipeline(t *testing.T, seed int64) {
 	rng := rand.New(rand.NewSource(seed))
 
-	// 1. Setup Mock Operations
+	// 1. Setup Mock Operations with predictable behaviors
 	executor := &PipelineExecutor{
 		Operations: map[string]func(inputs map[string]any) (map[string]any, error){
-			"FindOrg": func(inputs map[string]any) (map[string]any, error) {
-				orgID := inputs["start_org_id"].(string)
-				return map[string]any{
-					"org_id":   orgID,
-					"org_name": "Mock Org " + orgID,
-				}, nil
+			"Concat": func(inputs map[string]any) (map[string]any, error) {
+				v1, _ := inputs["v1"].(string)
+				v2, _ := inputs["v2"].(string)
+				return map[string]any{"out": v1 + v2}, nil
 			},
-			"FindRole": func(inputs map[string]any) (map[string]any, error) {
-				role := inputs["role_type"].(string)
-				return map[string]any{
-					"user_id": "u_" + role,
-					"name":    "Leader Name",
-					"email":   "leader@example.com",
-				}, nil
+			"Identity": func(inputs map[string]any) (map[string]any, error) {
+				return map[string]any{"out": inputs["in"]}, nil
 			},
-			"Template": func(inputs map[string]any) (map[string]any, error) {
-				return map[string]any{
-					"subject": "Velkommen",
-					"body":    fmt.Sprintf("Hei %s, %s har meldt seg inn.", inputs["leader_name"], inputs["user_name"]),
-				}, nil
-			},
-			"SendEmail": func(inputs map[string]any) (map[string]any, error) {
-				// Simulate internal state change or external call
-				return map[string]any{"sent": true}, nil
+			"Const": func(inputs map[string]any) (map[string]any, error) {
+				return map[string]any{"out": inputs["val"]}, nil
 			},
 		},
 	}
 
-	// 2. Define complex Pipeline (DAG)
-	config := PipelineConfig{
-		Nodes: []PipelineNode{
-			{
-				ID:   "node_1",
-				Type: "FindOrg",
-				Inputs: map[string]NodeInput{
-					"start_org_id": {Mode: InputModeRef, Value: "trigger.org_id"},
-				},
-			},
-			{
-				ID:   "node_2",
-				Type: "FindRole",
-				Inputs: map[string]NodeInput{
-					"target_id": {Mode: InputModeRef, Value: "node_1.org_id"},
-					"role_type": {Mode: InputModeStatic, Value: "leader"},
-				},
-			},
-			{
-				ID:   "node_3",
-				Type: "Template",
-				Inputs: map[string]NodeInput{
-					"user_name":   {Mode: InputModeRef, Value: "trigger.user_name"},
-					"leader_name": {Mode: InputModeRef, Value: "node_2.name"},
-				},
-			},
-			{
-				ID:   "node_4",
-				Type: "SendEmail",
-				Inputs: map[string]NodeInput{
-					"to_email": {Mode: InputModeRef, Value: "node_2.email"},
-					"subject":  {Mode: InputModeRef, Value: "node_3.subject"},
-					"body":     {Mode: InputModeRef, Value: "node_3.body"},
-				},
-			},
-		},
-	}
-
-	// 3. Simulation inputs
+	// 2. Generate Random Pipeline (DAG)
+	nodeCount := 2 + rng.Intn(10) // 2 to 12 nodes
+	nodes := make([]PipelineNode, nodeCount)
+	
+	// Track expected results for each node
+	expectedResults := make(map[string]map[string]any)
 	triggerData := map[string]any{
-		"user_id":   fmt.Sprintf("user_%d", rng.Intn(1000)),
-		"user_name": "Nymedlem",
-		"org_id":    "org_123",
+		"init": fmt.Sprintf("trigger_%d", seed),
+	}
+	expectedResults["trigger"] = triggerData
+
+	availableSources := []string{"trigger"}
+
+	for i := 0; i < nodeCount; i++ {
+		nodeID := fmt.Sprintf("node_%d", i)
+		nodeType := ""
+		inputs := make(map[string]NodeInput)
+		expected := make(map[string]any)
+
+		// Choose a random operation
+		r := rng.Intn(3)
+		switch r {
+		case 0: // Const
+			nodeType = "Const"
+			val := fmt.Sprintf("const_%d", rng.Intn(100))
+			inputs["val"] = NodeInput{Mode: InputModeStatic, Value: val}
+			expected["out"] = val
+		case 1: // Identity
+			nodeType = "Identity"
+			source := availableSources[rng.Intn(len(availableSources))]
+			// We know all our mocks output "out" or use trigger.init
+			field := "out"
+			if source == "trigger" { field = "init" }
+			
+			inputs["in"] = NodeInput{Mode: InputModeRef, Value: source + "." + field}
+			expected["out"] = expectedResults[source][field]
+		case 2: // Concat
+			nodeType = "Concat"
+			s1 := availableSources[rng.Intn(len(availableSources))]
+			s2 := availableSources[rng.Intn(len(availableSources))]
+			
+			f1 := "out"; if s1 == "trigger" { f1 = "init" }
+			f2 := "out"; if s2 == "trigger" { f2 = "init" }
+
+			inputs["v1"] = NodeInput{Mode: InputModeRef, Value: s1 + "." + f1}
+			inputs["v2"] = NodeInput{Mode: InputModeRef, Value: s2 + "." + f2}
+			
+			v1 := expectedResults[s1][f1].(string)
+			v2 := expectedResults[s2][f2].(string)
+			expected["out"] = v1 + v2
+		}
+
+		nodes[i] = PipelineNode{
+			ID:     nodeID,
+			Type:   nodeType,
+			Inputs: inputs,
+		}
+		expectedResults[nodeID] = expected
+		availableSources = append(availableSources, nodeID)
 	}
 
-	// 4. Execute
+	config := PipelineConfig{Nodes: nodes}
+
+	// 3. Execution Engine Capture
+	// We need a way to verify internal state after execution.
+	// Let's modify Execute to return the full results map for testing, or just rely on side effects.
+	// Since Execute currently returns error, let's use a "Collector" operation to verify.
+	
+	finalNodeID := "final_verifier"
+	collectorResults := make(map[string]any)
+	executor.Operations["Collector"] = func(inputs map[string]any) (map[string]any, error) {
+		for k, v := range inputs {
+			collectorResults[k] = v
+		}
+		return nil, nil
+	}
+
+	collectorInputs := make(map[string]NodeInput)
+	expectedCollector := make(map[string]any)
+	for _, source := range availableSources {
+		if source == "trigger" { continue }
+		field := "out"
+		collectorInputs[source] = NodeInput{Mode: InputModeRef, Value: source + "." + field}
+		expectedCollector[source] = expectedResults[source][field]
+	}
+
+	config.Nodes = append(config.Nodes, PipelineNode{
+		ID:     finalNodeID,
+		Type:   collectorResultsOpType(), // helper
+		Inputs: collectorInputs,
+	})
+
+	// Use a closure or wrapper to access collectorResults in the operation
+	executor.Operations["Collector"] = func(inputs map[string]any) (map[string]any, error) {
+		for k, v := range inputs {
+			collectorResults[k] = v
+		}
+		return nil, nil
+	}
+
+	// 4. Run
 	err := executor.Execute(config, triggerData)
 	if err != nil {
 		t.Fatalf("Execution failed: %v", err)
 	}
 
-	// 5. Verify determinism (Optional, but here we check basic logic)
-	// In a full DST we might check a shared state log
+	// 5. Verify entire graph state
+	if !reflect.DeepEqual(collectorResults, expectedCollector) {
+		t.Errorf("Simulation results mismatch!\nGot: %v\nExp: %v", collectorResults, expectedCollector)
+	}
 }
+
+func collectorResultsOpType() string { return "Collector" }

@@ -47,12 +47,14 @@ const fetchOrganMembers = async (organ: any) => {
     selectedOrgan.value = organ
     membersLoading.value = true
     try {
-        organMembers.value = await api.getOrganMembers(organ.id)
+        const data = await api.getOrganMembers(organ.id)
+        organMembers.value = Array.isArray(data) ? data : []
         // Hent alle medlemmer i org-en for å kunne legge til i organ
         const membersData = await api.getMembers(selectedOrg.value)
         allMembers.value = Array.isArray(membersData) ? membersData : []
     } catch (e) {
         console.error(e)
+        organMembers.value = []
     } finally {
         membersLoading.value = false
     }

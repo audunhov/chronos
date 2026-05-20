@@ -155,18 +155,18 @@ paths:
   /api/organizations:
     get:
       operationId: getOrganizations
-      summary: Get unique organization IDs
+      summary: Get unique organization list
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: List of organization IDs
+          description: List of organizations
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: string
+                  $ref: '#/components/schemas/Org'
 
   /api/organizations/hierarchy:
     get:
@@ -545,6 +545,74 @@ components:
           type: integer
         total_branch_balance:
           type: integer
+
+    Org:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    EventReaction:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        trigger_event:
+          type: string
+        action_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        is_inherited:
+          type: boolean
+
+    CreateReactionRequest:
+      type: object
+      required:
+        - org_id
+        - trigger_event
+        - action_type
+        - config
+      properties:
+        org_id:
+          type: string
+        trigger_event:
+          type: string
+        action_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+
+    Organ:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        name:
+          type: string
+        parent_organ_id:
+          type: string
+
+    CreateOrganRequest:
+      type: object
+      required:
+        - org_id
+        - name
+      properties:
+        org_id:
+          type: string
+        name:
+          type: string
+        parent_organ_id:
+          type: string
 
     Member:
       type: object

@@ -8,6 +8,9 @@ import LoginForm from './components/LoginForm.vue'
 import OrgManager from './components/OrgManager.vue'
 import StatsDashboard from './components/StatsDashboard.vue'
 import FormManager from './components/FormManager.vue'
+import ProfileManager from './components/ProfileManager.vue'
+import ReactionManager from './components/ReactionManager.vue'
+import OrganListManager from './components/OrganListManager.vue'
 import BButton from './components/base/BButton.vue'
 import BCard from './components/base/BCard.vue'
 import BBadge from './components/base/BBadge.vue'
@@ -16,15 +19,15 @@ import BSelect from './components/base/BSelect.vue'
 
 const members = ref<Member[]>([])
 const myMemberships = ref<MyMembership[]>([])
-const organizations = ref<string[]>([])
+const organizations = ref<{id: string, name: string}[]>([])
 const selectedOrg = ref('')
 const loading = ref(false)
 const error = ref('')
 const selectedDate = ref('')
 const showModal = ref(false)
 const currentView = ref<'admin' | 'me'>('me')
-const adminTab = ref<'members' | 'treasury' | 'orgs' | 'stats' | 'forms'>('members')
-const meTab = ref<'memberships' | 'forms'>('memberships')
+const adminTab = ref<'members' | 'treasury' | 'orgs' | 'stats' | 'forms' | 'pipelines' | 'organs'>('members')
+const meTab = ref<'memberships' | 'forms' | 'profile'>('memberships')
 const treasuryReport = ref<TreasuryItem[]>([])
 
 const fetchMembers = async (silent = false) => {
@@ -80,8 +83,7 @@ const fetchTreasuryReport = async () => {
 const fetchOrganizations = async () => {
   if (!auth.user) return
   try {
-    const data = await api.getOrganizations()
-    organizations.value = Array.isArray(data) ? data : []
+    organizations.value = await api.getOrganizations()
   } catch (e) {
     console.error('Failed to fetch orgs:', e)
   }
@@ -161,7 +163,7 @@ watch(() => auth.user, (newUser) => {
                 :variant="currentView === 'me' ? 'primary' : 'secondary'"
                 class="text-xs italic"
             >
-                MIN PROFIL
+                MINE SIDER
             </BButton>
             <BButton 
                 v-if="auth.user?.role === 'admin'"
@@ -188,7 +190,7 @@ watch(() => auth.user, (newUser) => {
       <!-- PERSONAL VIEW -->
       <div v-if="currentView === 'me'">
         <div class="flex flex-col xl:flex-row xl:items-end justify-between mb-12 gap-6 border-b-4 border-black pb-8">
-            <nav class="flex gap-4">
+            <nav class="flex flex-wrap gap-4">
                 <BButton 
                     @click="meTab = 'memberships'"
                     :variant="meTab === 'memberships' ? 'primary' : 'ghost'"
@@ -202,6 +204,13 @@ watch(() => auth.user, (newUser) => {
                     class="text-sm uppercase italic"
                 >
                     UNDERSØKELSER
+                </BButton>
+                <BButton 
+                    @click="meTab = 'profile'"
+                    :variant="meTab === 'profile' ? 'primary' : 'ghost'"
+                    class="text-sm uppercase italic"
+                >
+                    MIN PROFIL
                 </BButton>
             </nav>
             <BButton
@@ -253,6 +262,10 @@ watch(() => auth.user, (newUser) => {
         <div v-if="meTab === 'forms'">
             <FormManager />
         </div>
+
+        <div v-if="meTab === 'profile'">
+            <ProfileManager />
+        </div>
       </div>
 
       <!-- ADMIN VIEW -->
@@ -294,15 +307,29 @@ watch(() => auth.user, (newUser) => {
                 >
                     SKJEMAER
                 </BButton>
+                <BButton 
+                    @click="adminTab = 'pipelines'"
+                    :variant="adminTab === 'pipelines' ? 'primary' : 'ghost'"
+                    class="text-sm uppercase italic"
+                >
+                    PIPELINES
+                </BButton>
+                <BButton 
+                    @click="adminTab = 'organs'"
+                    :variant="adminTab === 'organs' ? 'primary' : 'ghost'"
+                    class="text-sm uppercase italic"
+                >
+                    ORGANER
+                </BButton>
             </nav>
         </div>
 
         <!-- Members Tab -->
         <div v-if="adminTab === 'members'" class="space-y-8">
-            <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]">
-                <BSelect v-model="selectedOrg" label="Org-Filter" class="bg-black text-white border-white">
+            <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
+                <BSelect v-model="selectedOrg" label="Org-Filter" class="bg-black text-white border-white min-w-[250px]">
                     <option value="">ALLE ORGANISASJONER</option>
-                    <option v-for="org in organizations" :key="org" :value="org">{{ org }}</option>
+                    <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
                 </BSelect>
 
                 <BInput v-model="selectedDate" type="date" label="Historisk dato (As-Of)" class="bg-black text-white border-white" />
@@ -315,7 +342,7 @@ watch(() => auth.user, (newUser) => {
                 <thead>
                     <tr>
                     <th class="brutalist-th">Identitet</th>
-                    <th class="brutalist-th">Org-ID</th>
+                    <th class="brutalist-th">Org</th>
                     <th class="brutalist-th">Status</th>
                     <th class="brutalist-th">Rolle</th>
                     <th class="brutalist-th">Saldo</th>
@@ -390,6 +417,16 @@ watch(() => auth.user, (newUser) => {
         <div v-if="adminTab === 'forms'">
             <FormManager :isAdmin="true" />
         </div>
+
+        <!-- Pipelines Admin Tab -->
+        <div v-if="adminTab === 'pipelines'">
+            <ReactionManager :orgs="organizations" />
+        </div>
+
+        <!-- Organs Admin Tab -->
+        <div v-if="adminTab === 'organs'">
+            <OrganListManager :orgs="organizations" />
+        </div>
       </div>
     </div>
 
@@ -397,7 +434,7 @@ watch(() => auth.user, (newUser) => {
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <BCard class="relative w-full max-w-lg">
         <button @click="showModal = false" class="absolute -top-4 -right-4 bg-black text-white w-10 h-10 border-4 border-black font-black flex items-center justify-center hover:bg-gray-800 shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]">X</button>
-        <RegisterForm @registered="onMemberRegistered" @cancel="showModal = false" />
+        <RegisterForm :organizations="organizations" @registered="onMemberRegistered" @cancel="showModal = false" />
       </BCard>
     </div>
   </div>

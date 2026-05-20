@@ -97,6 +97,44 @@ export type TreasuryItem = {
   total_branch_balance?: number;
 };
 
+export type Org = {
+  id?: string;
+  name?: string;
+};
+
+export type EventReaction = {
+  id?: string;
+  org_id?: string;
+  trigger_event?: string;
+  action_type?: string;
+  config?: {
+    [key: string]: any;
+  };
+  is_inherited?: boolean;
+};
+
+export type CreateReactionRequest = {
+  org_id: string;
+  trigger_event: string;
+  action_type: string;
+  config: {
+    [key: string]: any;
+  };
+};
+
+export type Organ = {
+  id?: string;
+  org_id?: string;
+  name?: string;
+  parent_organ_id?: string;
+};
+
+export type CreateOrganRequest = {
+  org_id: string;
+  name: string;
+  parent_organ_id?: string;
+};
+
 export type Member = {
   id?: string;
   org_id?: string;

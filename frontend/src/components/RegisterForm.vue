@@ -5,6 +5,10 @@ import BButton from './base/BButton.vue'
 import BInput from './base/BInput.vue'
 import BCard from './base/BCard.vue'
 
+const props = defineProps<{
+    organizations?: { id: string, name: string }[]
+}>()
+
 const emit = defineEmits(['registered', 'cancel'])
 
 const form = ref({
@@ -35,8 +39,10 @@ const handleSubmit = async () => {
     await api.registerMember(payload)
     emit('registered')
   } catch (e: any) {
-    error.value = e.message
-    if (e.message.includes('already a member') || e.status === 409) {
+    console.error('Registration error:', e)
+    const errorMsg = e.message || e.payload || 'Failed to register'
+    error.value = errorMsg
+    if (errorMsg.includes('already a member') || e.status === 409) {
         conflict.value = true
     }
   } finally {
@@ -74,7 +80,12 @@ const requestMagicLink = async () => {
 
       <div class="grid grid-cols-2 gap-6">
         <BInput v-model="form.birth_year" type="number" label="Fødselsår" required />
-        <BInput v-model="form.org_id" label="Org-ID" placeholder="VALGFRITT" />
+        <BSelect v-model="form.org_id" label="Organisasjon">
+            <option value="">Ingen (Global)</option>
+            <option v-for="org in props.organizations" :key="org.id" :value="org.id">
+                {{ org.name }}
+            </option>
+        </BSelect>
       </div>
       
       <div v-if="error" class="bg-red-500 text-white border-4 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">

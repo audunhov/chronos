@@ -178,7 +178,13 @@ func (s *Server) GetMembersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.QueryContext(r.Context(), "SELECT DISTINCT org_id::text FROM membership_view UNION SELECT id::text FROM organization_hierarchy")
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT id, name FROM organization_hierarchy 
+		UNION 
+		SELECT DISTINCT m.org_id, o.name 
+		FROM membership_view m 
+		JOIN organization_hierarchy o ON m.org_id = o.id`)
+
 	if err != nil {
 		log.Printf("GetOrganizations error: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -186,17 +192,237 @@ func (s *Server) GetOrganizationsHandler(w http.ResponseWriter, r *http.Request)
 	}
 	defer rows.Close()
 
-	var orgs []string
+	type Org struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
+	var orgs []Org
 	for rows.Next() {
-		var org string
-		if err := rows.Scan(&org); err != nil {
+		var o Org
+		if err := rows.Scan(&o.ID, &o.Name); err != nil {
 			continue
 		}
-		orgs = append(orgs, org)
+		orgs = append(orgs, o)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orgs)
+}
+
+func (s *Server) UpdateMyProfileHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" && req.Email == "" {
+		http.Error(w, "No fields to update", http.StatusBadRequest)
+		return
+	}
+
+	// Vi sender et UserProfileUpdated event til event store for å bevare historikk
+	event := domain.UserProfileUpdated{
+		ID:        userID,
+		Name:      req.Name,
+		Email:     req.Email,
+		Timestamp: time.Now(),
+	}
+
+	// Finn gjeldende versjon
+	var version int
+	err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", userID).Scan(&version)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.eventStore.Append(r.Context(), userID, version+1, event); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Oppdater users-tabellen (read model for auth)
+	query := "UPDATE users SET "
+	var args []any
+	if req.Name != "" {
+		query += "name = $1"
+		args = append(args, req.Name)
+	}
+	if req.Email != "" {
+		if len(args) > 0 { query += ", " }
+		query += "email = $" + fmt.Sprint(len(args)+1)
+		args = append(args, req.Email)
+	}
+	query += " WHERE id = $" + fmt.Sprint(len(args)+1)
+	args = append(args, userID)
+
+	_, err = s.db.ExecContext(r.Context(), query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) GetReactionsHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	if orgID == "" {
+		http.Error(w, "Missing org_id", http.StatusBadRequest)
+		return
+	}
+
+	// Hent path for org
+	var path string
+	err := s.db.QueryRowContext(r.Context(), "SELECT path::text FROM organization_hierarchy WHERE id = $1", orgID).Scan(&path)
+	if err != nil {
+		http.Error(w, "Organization not found", http.StatusNotFound)
+		return
+	}
+
+	// Hent alle reaksjoner som treffer denne path-en (arv oppover i hierarkiet)
+	query := `
+		SELECT er.id, er.org_id, er.trigger_event, er.action_type, er.config,
+		       (er.org_id != $1) as is_inherited
+		FROM event_reactions er
+		JOIN organization_hierarchy o ON er.org_id = o.id
+		WHERE o.path @> $2::ltree
+		ORDER BY o.path ASC`
+
+	rows, err := s.db.QueryContext(r.Context(), query, orgID, path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type ReactionResponse struct {
+		ID           string         `json:"id"`
+		OrgID        string         `json:"org_id"`
+		TriggerEvent string         `json:"trigger_event"`
+		ActionType   string         `json:"action_type"`
+		Config       map[string]any `json:"config"`
+		IsInherited  bool           `json:"is_inherited"`
+	}
+
+	var reactions []ReactionResponse
+	for rows.Next() {
+		var r ReactionResponse
+		var configJSON []byte
+		if err := rows.Scan(&r.ID, &r.OrgID, &r.TriggerEvent, &r.ActionType, &configJSON, &r.IsInherited); err != nil {
+			continue
+		}
+		json.Unmarshal(configJSON, &r.Config)
+		reactions = append(reactions, r)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(reactions)
+}
+
+func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrgID        string         `json:"org_id"`
+		TriggerEvent string         `json:"trigger_event"`
+		ActionType   string         `json:"action_type"`
+		Config       map[string]any `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	configJSON, _ := json.Marshal(req.Config)
+	_, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO event_reactions (org_id, trigger_event, action_type, config)
+		VALUES ($1, $2, $3, $4)`,
+		req.OrgID, req.TriggerEvent, req.ActionType, configJSON)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	if orgID == "" {
+		http.Error(w, "Missing org_id", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := s.db.QueryContext(r.Context(), "SELECT id, org_id, name, parent_organ_id FROM organs WHERE org_id = $1", orgID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type OrganResponse struct {
+		ID            string  `json:"id"`
+		OrgID         string  `json:"org_id"`
+		Name          string  `json:"name"`
+		ParentOrganID *string `json:"parent_organ_id"`
+	}
+
+	var organs []OrganResponse
+	for rows.Next() {
+		var o OrganResponse
+		var parentID sql.NullString
+		if err := rows.Scan(&o.ID, &o.OrgID, &o.Name, &parentID); err != nil {
+			continue
+		}
+		if parentID.Valid {
+			o.ParentOrganID = &parentID.String
+		}
+		organs = append(organs, o)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(organs)
+}
+
+func (s *Server) CreateOrganHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrgID         string  `json:"org_id"`
+		Name          string  `json:"name"`
+		ParentOrganID *string `json:"parent_organ_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	var parentID sql.NullString
+	if req.ParentOrganID != nil {
+		parentID.String = *req.ParentOrganID
+		parentID.Valid = true
+	}
+
+	_, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO organs (org_id, name, parent_organ_id)
+		VALUES ($1, $2, $3)`,
+		req.OrgID, req.Name, parentID)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
 type RegisterMemberRequest struct {
@@ -513,12 +739,12 @@ func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request
 			o.name, 
 			o.path::text, 
 			COALESCE(ls.local_balance, 0) as local_balance,
-			(
+			COALESCE((
 				SELECT SUM(m.balance)
 				FROM membership_view m
 				JOIN organization_hierarchy child ON m.org_id = child.id
 				WHERE child.path <@ o.path
-			) as total_branch_balance
+			), 0) as total_branch_balance
 		FROM organization_hierarchy o
 		LEFT JOIN local_sums ls ON o.id = ls.org_id
 		ORDER BY o.path ASC`

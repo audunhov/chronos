@@ -154,7 +154,7 @@ export const getMembers = (
 
 export type GetOrganizationsError = Fetcher.ErrorWrapper<undefined>;
 
-export type GetOrganizationsResponse = string[];
+export type GetOrganizationsResponse = Schemas.Org[];
 
 export const getOrganizations = (signal?: AbortSignal) =>
   chronosFetch<

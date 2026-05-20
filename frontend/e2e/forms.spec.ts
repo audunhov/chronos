@@ -29,8 +29,9 @@ test.describe('Forms Management E2E', () => {
     
     await page.getByPlaceholder('F.eks. Medlemsundersøkelse 2026').fill(testFormTitle)
     
-    // Velg organisasjon
+    // Velg organisasjon (vent til opsjoner er lastet)
     const orgSelect = page.locator('select').first()
+    await expect(orgSelect.locator('option').nth(1)).toBeAttached()
     await orgSelect.selectOption({ index: 1 }) 
 
     await page.getByRole('button', { name: '+ LEGG TIL' }).click()
@@ -42,8 +43,8 @@ test.describe('Forms Management E2E', () => {
     // Vent på at skjemaet dukker opp i listen
     await expect(page.getByRole('heading', { name: testFormTitle })).toBeVisible()
 
-    // 3. Svar på skjemaet (Min profil -> Undersøkelser)
-    await page.getByRole('button', { name: 'MIN PROFIL' }).click()
+    // 3. Svar på skjemaet (Mine sider -> Undersøkelser)
+    await page.getByRole('button', { name: 'MINE SIDER' }).click()
     await page.getByRole('button', { name: 'UNDERSØKELSER' }).click()
     
     await page.getByRole('button', { name: 'SVAR PÅ SKJEMA' }).last().click()

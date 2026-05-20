@@ -22,7 +22,7 @@ const showCreator = ref(false)
 const newFormTitle = ref('')
 const newFormOrg = ref('')
 const newFormFields = ref<{ name: string, label: string, type: 'text' | 'textarea' | 'select', options?: string }[]>([])
-const organizations = ref<string[]>([])
+const organizations = ref<{ id: string, name: string }[]>([])
 
 const addField = () => {
     newFormFields.value.push({ name: '', label: '', type: 'text' })
@@ -142,7 +142,7 @@ onMounted(() => {
                             label="Tilhører Organisasjon"
                         >
                             <option value="">Velg organisasjon...</option>
-                            <option v-for="org in organizations" :key="org" :value="org">{{ org }}</option>
+                            <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
                         </BSelect>
                     </div>
 

@@ -52,13 +52,33 @@ func main() {
 	
 	// API routes with Auth Middleware
 	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("/me/profile", server.GetMyProfileHandler)
+	apiMux.HandleFunc("/me/profile", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			server.UpdateMyProfileHandler(w, r)
+		} else {
+			server.GetMyProfileHandler(w, r)
+		}
+	})
 	apiMux.HandleFunc("/me/memberships", server.GetMyMembershipsHandler)
 	apiMux.HandleFunc("/members", server.GetMembersHandler)
 	apiMux.HandleFunc("/organizations", server.GetOrganizationsHandler)
 	apiMux.HandleFunc("/organizations/hierarchy", server.GetOrganizationHierarchyHandler)
 	apiMux.HandleFunc("/commands/create-organization", server.CreateOrganizationHandler)
 	apiMux.HandleFunc("/commands/delete-organization", server.DeleteOrganizationHandler)
+	apiMux.HandleFunc("/admin/reactions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			server.CreateReactionHandler(w, r)
+		} else {
+			server.GetReactionsHandler(w, r)
+		}
+	})
+	apiMux.HandleFunc("/admin/organs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			server.CreateOrganHandler(w, r)
+		} else {
+			server.GetOrgansHandler(w, r)
+		}
+	})
 	apiMux.HandleFunc("/commands/register-member", server.RegisterMemberHandler)
 	apiMux.HandleFunc("/commands/update-member", server.UpdateMemberHandler)
 	apiMux.HandleFunc("/commands/shred-member", server.ShredMemberHandler)

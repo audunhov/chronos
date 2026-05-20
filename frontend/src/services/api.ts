@@ -25,7 +25,11 @@ export const api = {
         setAuth(res.user, res.access_token);
         return res;
     },
+
+    // Profile
     getMyProfile: () => chronos.getMyProfile(),
+    updateMyProfile: (data: { name?: string, email?: string }) => chronos.updateMyProfile({ body: data }),
+    
     getMyMemberships: () => chronos.getMyMemberships(),
     getMembers: (orgId?: string) => chronos.getMembers({ 
         headers: getHeaders(orgId) 
@@ -34,12 +38,29 @@ export const api = {
         queryParams: { date },
         headers: getHeaders(orgId)
     }),
-    getOrganizations: () => chronos.getOrganizations(),
+    
+    // Organizations
+    getOrganizations: async () => {
+        const data = await chronos.getOrganizations();
+        return Array.isArray(data) ? data : [];
+    },
     getOrganizationHierarchy: () => chronos.getOrganizationHierarchy(),
     createOrganization: (data: any) => chronos.createOrganization({ body: data }),
     deleteOrganization: (id: string) => chronos.deleteOrganization({ queryParams: { id } }),
+    
+    // Admin Tools
     getTreasuryReport: () => chronos.getTreasuryReport(),
     getStats: () => chronos.getStats(),
+
+    // Reactions (Pipelines)
+    getReactions: (orgId: string) => chronos.getReactions({ queryParams: { org_id: orgId } }),
+    createReaction: (data: any) => chronos.createReaction({ body: data }),
+
+    // Organs
+    getOrgans: (orgId: string) => chronos.getOrgans({ queryParams: { org_id: orgId } }),
+    createOrgan: (data: any) => chronos.createOrgan({ body: data }),
+
+    // Forms
     getForms: (orgId?: string) => {
         const queryParams: any = {};
         if (orgId) queryParams.org_id = orgId;
@@ -47,6 +68,8 @@ export const api = {
     },
     createForm: (data: any) => chronos.createForm({ body: data }),
     submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),
+    
+    // Member Management
     registerMember: (data: any) => chronos.registerMember({ body: data }),
     updateMember: (id: string, fields: any) => chronos.updateMember({ 
         body: { id, updated_fields: fields } 

@@ -20,6 +20,11 @@ const organMembers = ref<any[]>([])
 const membersLoading = ref(false)
 const showAddMember = ref(false)
 
+const newOrgan = ref({
+    name: '',
+    parent_organ_id: ''
+})
+
 const allMembers = ref<any[]>([]) // For å velge hvem som skal legges til
 const newMemberID = ref('')
 const newMemberRole = ref('Styremedlem')
@@ -88,7 +93,7 @@ const createOrgan = async () => {
             ...newOrgan.value
         })
         showCreate.value = false
-        newOrgan.value = { name: '', parent_organ_id: null }
+        newOrgan.value = { name: '', parent_organ_id: '' }
         fetchOrgans()
     } catch (e: any) {
         alert(e.message)
@@ -98,8 +103,8 @@ const createOrgan = async () => {
 watch(selectedOrg, fetchOrgans)
 
 onMounted(() => {
-    if (props.orgs.length > 0) {
-        selectedOrg.value = props.orgs[0].id
+    if (props.orgs && props.orgs.length > 0) {
+        selectedOrg.value = props.orgs[0]!.id
     }
 })
 </script>
@@ -125,7 +130,7 @@ onMounted(() => {
                     <BInput v-model="newOrgan.name" label="Navn på Organ" placeholder="F.eks. Lokallagsstyre" required />
                     
                     <BSelect v-model="newOrgan.parent_organ_id" label="Overordnet Organ (Valgfritt)">
-                        <option :value="null">Ingen (Toppnivå organ)</option>
+                        <option value="">Ingen (Toppnivå organ)</option>
                         <option v-for="o in organs" :key="o.id" :value="o.id">{{ o.name }}</option>
                     </BSelect>
                 </div>

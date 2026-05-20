@@ -39,7 +39,7 @@ const updateProfile = async () => {
         message.value = 'Profil oppdatert!'
         // Oppdater auth state
         if (auth.user) {
-            auth.user.name = profile.value.name
+            (auth.user as any).name = profile.value.name
             auth.user.email = profile.value.email
         }
     } catch (e: any) {

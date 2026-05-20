@@ -566,6 +566,10 @@ components:
 
     OrgNode:
       type: object
+      required:
+        - id
+        - name
+        - path
       properties:
         id:
           type: string
@@ -608,6 +612,14 @@ components:
 
     MyMembership:
       type: object
+      required:
+        - id
+        - org_id
+        - org_name
+        - status
+        - role
+        - balance
+        - updated_at
       properties:
         id:
           type: string
@@ -667,6 +679,9 @@ components:
 
     StatRow:
       type: object
+      required:
+        - label
+        - value
       properties:
         label:
           type: string
@@ -675,6 +690,12 @@ components:
 
     TreasuryItem:
       type: object
+      required:
+        - id
+        - name
+        - path
+        - local_balance
+        - total_branch_balance
       properties:
         id:
           type: string
@@ -689,6 +710,9 @@ components:
 
     Org:
       type: object
+      required:
+        - id
+        - name
       properties:
         id:
           type: string
@@ -790,6 +814,16 @@ components:
 
     Member:
       type: object
+      required:
+        - id
+        - org_id
+        - name
+        - email
+        - status
+        - role
+        - balance
+        - updated_at
+        - created_at
       properties:
         id:
           type: string
@@ -800,6 +834,8 @@ components:
         email:
           type: string
         status:
+          type: string
+        role:
           type: string
         metadata:
           type: object

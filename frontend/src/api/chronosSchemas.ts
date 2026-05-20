@@ -20,10 +20,10 @@ export type AuthResponse = {
 };
 
 export type OrgNode = {
-  id?: string;
-  name?: string;
+  id: string;
+  name: string;
   parent_id?: string | null;
-  path?: string;
+  path: string;
   policy?: {
     [key: string]: any;
   };
@@ -48,16 +48,16 @@ export type User = {
 };
 
 export type MyMembership = {
-  id?: string;
-  org_id?: string;
-  org_name?: string;
-  status?: string;
-  role?: string;
-  balance?: number;
+  id: string;
+  org_id: string;
+  org_name: string;
+  status: string;
+  role: string;
+  balance: number;
   /**
    * @format date-time
    */
-  updated_at?: string;
+  updated_at: string;
 };
 
 export type Form = {
@@ -85,21 +85,21 @@ export type CreateFormRequest = {
 };
 
 export type StatRow = {
-  label?: string;
-  value?: number;
+  label: string;
+  value: number;
 };
 
 export type TreasuryItem = {
-  id?: string;
-  name?: string;
-  path?: string;
-  local_balance?: number;
-  total_branch_balance?: number;
+  id: string;
+  name: string;
+  path: string;
+  local_balance: number;
+  total_branch_balance: number;
 };
 
 export type Org = {
-  id?: string;
-  name?: string;
+  id: string;
+  name: string;
 };
 
 export type EventReaction = {
@@ -155,24 +155,25 @@ export type CreateOrganRequest = {
 };
 
 export type Member = {
-  id?: string;
-  org_id?: string;
-  name?: string;
-  email?: string;
-  status?: string;
+  id: string;
+  org_id: string;
+  name: string;
+  email: string;
+  status: string;
+  role: string;
   metadata?: {
     [key: string]: any;
   };
-  balance?: number;
+  balance: number;
   fee_formula?: string;
   /**
    * @format date-time
    */
-  created_at?: string;
+  created_at: string;
   /**
    * @format date-time
    */
-  updated_at?: string;
+  updated_at: string;
 };
 
 export type RegisterMemberRequest = {

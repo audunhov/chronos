@@ -49,10 +49,13 @@ const fetchStats = async () => {
         const data = await api.getStats()
         if (Array.isArray(data)) {
             chartData.value = {
-                labels: data.map(d => d.label),
+                labels: data.map(d => d.label || ''),
                 datasets: [{
-                    ...chartData.value.datasets[0],
-                    data: data.map(d => d.value)
+                    label: 'Nye Medlemmer',
+                    backgroundColor: '#fbbf24',
+                    borderColor: '#000',
+                    borderWidth: 4,
+                    data: data.map(d => d.value || 0)
                 }]
             }
             stats.value = data

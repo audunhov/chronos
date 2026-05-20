@@ -21,11 +21,11 @@ const submitted = ref(false)
 const showCreator = ref(false)
 const newFormTitle = ref('')
 const newFormOrg = ref('')
-const newFormFields = ref<{ name: string, label: string, type: 'text' | 'textarea' | 'select', options?: string }[]>([])
+const newFormFields = ref<{ name: string, label: string, type: 'text' | 'textarea' | 'select', options: string }[]>([])
 const organizations = ref<{ id: string, name: string }[]>([])
 
 const addField = () => {
-    newFormFields.value.push({ name: '', label: '', type: 'text' })
+    newFormFields.value.push({ name: '', label: '', type: 'text', options: '' })
 }
 
 const removeField = (index: number) => {
@@ -205,7 +205,7 @@ onMounted(() => {
             <BCard v-for="f in forms" :key="f.id" class="flex flex-col h-full hover:bg-yellow-50">
                 <div class="flex-1">
                     <div class="flex justify-between items-start mb-4">
-                        <span class="bg-black text-white text-[10px] font-black px-2 py-1 uppercase">{{ f.org_id.split('-')[0] }}</span>
+                        <span class="bg-black text-white text-[10px] font-black px-2 py-1 uppercase">{{ f.org_id ? f.org_id.split('-')[0] : '' }}</span>
                         <span class="text-[10px] font-bold text-gray-400 uppercase">v1.0</span>
                     </div>
                     <h3 class="font-black text-2xl mb-6 uppercase tracking-tighter leading-none">{{ f.title }}</h3>

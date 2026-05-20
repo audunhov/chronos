@@ -27,18 +27,26 @@ type StoredEvent struct {
 }
 
 func (s *EventStore) Append(ctx context.Context, aggregateID string, version int, event domain.Event) error {
+	return s.AppendWithTx(ctx, nil, aggregateID, version, event)
+}
+
+func (s *EventStore) AppendWithTx(ctx context.Context, tx *sql.Tx, aggregateID string, version int, event domain.Event) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+	var ownsTx bool
+	if tx == nil {
+		tx, err = s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		ownsTx = true
 	}
-	defer tx.Rollback()
 
-	// 1. Sjekk for versjonskonflikt (Optimistic Concurrency)
+	// 1. Sjekk for versjonskonflikt
 	var lastVersion int
 	err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", aggregateID).Scan(&lastVersion)
 	if err != nil {
@@ -49,7 +57,7 @@ func (s *EventStore) Append(ctx context.Context, aggregateID string, version int
 		return fmt.Errorf("concurrency conflict: expected version %d, got %d", version-1, lastVersion)
 	}
 
-	// 2. Lagre eventen i event_store
+	// 2. Lagre eventen
 	now := time.Now()
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO event_store (aggregate_id, version, event_type, payload, created_at)
@@ -59,12 +67,15 @@ func (s *EventStore) Append(ctx context.Context, aggregateID string, version int
 		return err
 	}
 
-	// 3. Synkron projeksjon: Oppdater member_view i samme transaksjon
+	// 3. Synkron projeksjon
 	if err := s.projectSynchronously(ctx, tx, aggregateID, event, now); err != nil {
 		return fmt.Errorf("failed to project event synchronously: %w", err)
 	}
 
-	return tx.Commit()
+	if ownsTx {
+		return tx.Commit()
+	}
+	return nil
 }
 
 func (s *EventStore) projectSynchronously(ctx context.Context, tx *sql.Tx, aggregateID string, event domain.Event, now time.Time) error {

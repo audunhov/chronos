@@ -1,1 +1,55 @@
 @import "tailwindcss";
+
+@theme {
+  --font-mono: "Roboto Mono", "Courier New", monospace;
+}
+
+@layer components {
+  .brutalist-card {
+    @apply bg-white border-4 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)];
+  }
+
+  .brutalist-btn {
+    @apply inline-flex items-center justify-center font-bold px-6 py-3 border-4 border-black transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none;
+  }
+
+  .brutalist-btn-primary {
+    @apply brutalist-btn bg-yellow-400 hover:bg-yellow-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)];
+  }
+
+  .brutalist-btn-secondary {
+    @apply brutalist-btn bg-white hover:bg-gray-100 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)];
+  }
+
+  .brutalist-btn-danger {
+    @apply brutalist-btn bg-red-500 text-white hover:bg-red-400 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)];
+  }
+
+  .brutalist-input {
+    @apply border-4 border-black p-3 font-mono focus:outline-none focus:bg-blue-50 focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all;
+  }
+
+  .brutalist-label {
+    @apply block text-sm font-black uppercase tracking-tighter mb-1;
+  }
+
+  .brutalist-badge {
+    @apply px-3 py-1 border-2 border-black font-bold text-xs uppercase rounded-none;
+  }
+
+  .brutalist-table {
+    @apply w-full border-collapse border-4 border-black;
+  }
+
+  .brutalist-th {
+    @apply border-2 border-black bg-gray-100 p-4 text-left font-black uppercase tracking-tighter text-sm;
+  }
+
+  .brutalist-td {
+    @apply border-2 border-black p-4 text-sm font-mono;
+  }
+}
+
+body {
+  @apply bg-orange-50 font-mono text-black;
+}

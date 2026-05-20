@@ -10,7 +10,7 @@ import (
 // Støttede formler:
 // - "FIXED:beløp" (f.eks. "FIXED:50000" for 500 kr)
 // - "AGE_BASED:alder_grense:under_beløp:over_beløp" (f.eks. "AGE_BASED:18:20000:50000")
-func CalculateFee(m *Member, formula string, referenceYear int) (int, error) {
+func CalculateFee(u *User, m *Membership, formula string, referenceYear int) (int, error) {
 	if formula == "" {
 		return 0, fmt.Errorf("no formula defined")
 	}
@@ -36,10 +36,10 @@ func CalculateFee(m *Member, formula string, referenceYear int) (int, error) {
 		underAmount, _ := strconv.Atoi(parts[2])
 		overAmount, _ := strconv.Atoi(parts[3])
 
-		// Finn fødselsår fra metadata hvis det finnes
+		// For enkelhets skyld sjekker vi etter birth_year i medlemskapets metadata først, 
+		// og deretter i brukeren hvis vi hadde hatt metadata der også.
 		birthYearVal, ok := m.Metadata["birth_year"]
 		if !ok {
-			// Hvis vi ikke vet alder, faller vi tilbake til over_beløp for sikkerhets skyld
 			return overAmount, nil
 		}
 

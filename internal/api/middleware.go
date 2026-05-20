@@ -20,10 +20,22 @@ const (
 
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			// In development/test, we can be flexible with localhost/frontend origins
+			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://frontend:") {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Access-Control-Allow-Credentials", "false")
+			}
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization, X-CSRF-Token, X-Org-ID")
-		w.Header().Set("Access-Control-Allow-Credentials", "false")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -34,15 +46,8 @@ func CORSMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func AuthMiddleware(next http.Handler) http.Handler {
+func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// CORS headers for errors
-		origin := r.Header.Get("Origin")
-		if origin == "http://localhost:5173" || origin == "http://frontend:5173" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		}
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
@@ -72,23 +77,41 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		userID, _ := claims["sub"].(string)
 		
-		// Prøv å finne org_id, men ikke feil hvis den mangler
-		orgID, _ := claims["org_id"].(string)
-		if orgID == "" {
-			if metadata, ok := claims["user_metadata"].(map[string]any); ok {
-				orgID, _ = metadata["org_id"].(string)
+		// Finn Org ID: JWT vinner over header (som per eksisterende tester)
+		targetOrgID, _ := claims["org_id"].(string)
+		if targetOrgID == "" {
+			targetOrgID = r.Header.Get("X-Org-ID")
+		}
+		
+		var role string
+		if targetOrgID != "" && s.db != nil {
+			// Sjekk hierarkisk tilgang: Har brukeren en rolle i denne orgen eller overordnede?
+			query := `
+				SELECT ra.role_type 
+				FROM role_assignments ra
+				JOIN organization_hierarchy target ON target.id = $1
+				JOIN organization_hierarchy assigned ON ra.org_id = assigned.id
+				WHERE ra.user_id = $2 AND assigned.path @> target.path
+				LIMIT 1`
+			
+			err = s.db.QueryRowContext(r.Context(), query, targetOrgID, userID).Scan(&role)
+			if err != nil {
+				// Ingen rolle funnet i DB, sjekk om JWT har en rolle
+				role, _ = claims["role"].(string)
+				if role == "" {
+					role = "user"
+				}
+			}
+		} else {
+			// Fallback hvis vi ikke har DB (f.eks i tester) eller ingen target org
+			role, _ = claims["role"].(string)
+			if role == "" {
+				role = "user"
 			}
 		}
 
-		// Hvis org_id fremdeles mangler, sjekk om det er sendt med i en header (for brukere med tilgang til flere orger)
-		if orgID == "" {
-			orgID = r.Header.Get("X-Org-ID")
-		}
-
-		role, _ := claims["role"].(string)
-
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
-		ctx = context.WithValue(ctx, OrgIDKey, orgID)
+		ctx = context.WithValue(ctx, OrgIDKey, targetOrgID)
 		ctx = context.WithValue(ctx, RoleKey, role)
 
 		next.ServeHTTP(w, r.WithContext(ctx))

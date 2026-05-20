@@ -69,52 +69,85 @@ func (s *EventStore) Append(ctx context.Context, aggregateID string, version int
 
 func (s *EventStore) projectSynchronously(ctx context.Context, tx *sql.Tx, aggregateID string, event domain.Event, now time.Time) error {
 	switch e := event.(type) {
-	case domain.MemberRegistered:
+	case domain.UserCreated:
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO member_view (id, org_id, name, email, status, metadata, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO users (id, email, name, password_hash, created_at)
+			VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (id) DO UPDATE SET
-				name = EXCLUDED.name,
 				email = EXCLUDED.email,
-				status = EXCLUDED.status,
-				metadata = EXCLUDED.metadata,
-				updated_at = EXCLUDED.updated_at`,
-			e.ID, e.OrgID, e.Name, e.Email, "ACTIVE", "{}", now)
+				name = EXCLUDED.name,
+				password_hash = EXCLUDED.password_hash,
+				created_at = EXCLUDED.created_at`,
+			e.ID, e.Email, e.Name, e.PasswordHash, now)
 		return err
 
-	case domain.MemberUpdated:
-		// Hent nåværende tilstand for å bruke domain logic (ApplyEvent)
-		var m domain.Member
+	case domain.UserProfileUpdated:
+		// Oppdater users-tabellen
+		_, err := tx.ExecContext(ctx, `
+			UPDATE users SET name = $1, email = $2 WHERE id = $3`,
+			e.Name, e.Email, e.ID)
+		if err != nil {
+			return err
+		}
+		// Denormalisering: Oppdater alle medlemskap for denne brukeren
+		_, err = tx.ExecContext(ctx, `
+			UPDATE membership_view SET user_name = $1, user_email = $2 WHERE user_id = $3`,
+			e.Name, e.Email, e.ID)
+		return err
+
+	case domain.MembershipCreated:
+		// Finn bruker-info for denormalisering
+		var name, email string
+		err := tx.QueryRowContext(ctx, "SELECT name, email FROM users WHERE id = $1", e.UserID).Scan(&name, &email)
+		if err != nil {
+			return fmt.Errorf("failed to find user for membership: %w", err)
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO membership_view (id, user_id, org_id, user_name, user_email, status, role, metadata, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			e.ID, e.UserID, e.OrgID, name, email, "ACTIVE", e.Role, "{}", now)
+		return err
+
+	case domain.MembershipUpdated:
+		var m domain.Membership
 		var metadataJSON []byte
-		err := tx.QueryRowContext(ctx, "SELECT id, org_id, name, email, status, metadata FROM member_view WHERE id = $1", aggregateID).
-			Scan(&m.ID, &m.OrgID, &m.Name, &m.Email, &m.Status, &metadataJSON)
+		err := tx.QueryRowContext(ctx, "SELECT id, user_id, org_id, status, role, metadata FROM membership_view WHERE id = $1", aggregateID).
+			Scan(&m.ID, &m.UserID, &m.OrgID, &m.Status, &m.Role, &metadataJSON)
 		
 		if err == sql.ErrNoRows {
-			return nil // Kan skje hvis eventer er ut av rekkefølge eller vi replays
+			return nil
 		}
 		if err != nil {
 			return err
 		}
 		json.Unmarshal(metadataJSON, &m.Metadata)
 
-		if err := domain.ApplyEvent(&m, e); err != nil {
+		if err := domain.ApplyMembershipEvent(&m, e); err != nil {
 			return err
 		}
 
 		newMetadata, _ := json.Marshal(m.Metadata)
 		_, err = tx.ExecContext(ctx, `
-			UPDATE member_view 
-			SET name = $1, email = $2, status = $3, metadata = $4, updated_at = $5
-			WHERE id = $6`,
-			m.Name, m.Email, m.Status, newMetadata, now, aggregateID)
+			UPDATE membership_view 
+			SET status = $1, role = $2, metadata = $3, updated_at = $4
+			WHERE id = $5`,
+			m.Status, m.Role, newMetadata, now, aggregateID)
 		return err
 
-	case domain.MemberShredded:
+	case domain.MembershipShredded:
 		_, err := tx.ExecContext(ctx, `
-			UPDATE member_view 
-			SET name = 'REDACTED', email = 'redacted@example.com', status = 'SHREDDED', metadata = '{}', updated_at = $1
+			UPDATE membership_view 
+			SET user_name = 'REDACTED', user_email = 'redacted@example.com', status = 'SHREDDED', metadata = '{}', user_id = '00000000-0000-0000-0000-000000000000', updated_at = $1
 			WHERE id = $2`,
 			now, aggregateID)
+		return err
+
+	case domain.RoleAssigned:
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO role_assignments (id, user_id, org_id, role_type, created_at)
+			VALUES ($1, $2, $3, $4, $5)`,
+			e.ID, e.UserID, e.OrgID, e.RoleType, now)
 		return err
 	}
 

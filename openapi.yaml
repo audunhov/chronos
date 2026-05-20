@@ -11,6 +11,7 @@ servers:
 paths:
   /api/health:
     get:
+      operationId: getHealth
       summary: Health check
       responses:
         '200':
@@ -23,6 +24,7 @@ paths:
 
   /api/auth/signup:
     post:
+      operationId: signup
       summary: User signup
       requestBody:
         required: true
@@ -43,6 +45,7 @@ paths:
 
   /api/auth/login:
     post:
+      operationId: login
       summary: User login
       requestBody:
         required: true
@@ -60,8 +63,76 @@ paths:
         '401':
           description: Invalid credentials
 
+  /api/auth/request-magic-link:
+    post:
+      operationId: requestMagicLink
+      summary: Request a magic link for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Request processed
+
+  /api/auth/magic-login:
+    get:
+      operationId: magicLogin
+      summary: Login using a magic link token
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid or expired token
+
+  /api/me/profile:
+    get:
+      operationId: getMyProfile
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/me/memberships:
+    get:
+      operationId: getMyMemberships
+      summary: Get current user memberships
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of user memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyMembership'
+
   /api/members:
     get:
+      operationId: getMembers
       summary: Get members
       security:
         - bearerAuth: []
@@ -83,6 +154,7 @@ paths:
 
   /api/organizations:
     get:
+      operationId: getOrganizations
       summary: Get unique organization IDs
       security:
         - bearerAuth: []
@@ -96,8 +168,57 @@ paths:
                 items:
                   type: string
 
+  /api/organizations/hierarchy:
+    get:
+      operationId: getOrganizationHierarchy
+      summary: Get full organization tree
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Hierarchy list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrgNode'
+
+  /api/commands/create-organization:
+    post:
+      operationId: createOrganization
+      summary: Create a new organization
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrgRequest'
+      responses:
+        '201':
+          description: Organization created
+
+  /api/commands/delete-organization:
+    post:
+      operationId: deleteOrganization
+      summary: Delete an organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organization deleted
+
   /api/commands/register-member:
     post:
+      operationId: registerMember
       summary: Register a new member
       security:
         - bearerAuth: []
@@ -120,6 +241,7 @@ paths:
 
   /api/commands/update-member:
     post:
+      operationId: updateMember
       summary: Update member fields
       security:
         - bearerAuth: []
@@ -135,6 +257,7 @@ paths:
 
   /api/commands/shred-member:
     post:
+      operationId: shredMember
       summary: Shred member data (GDPR)
       security:
         - bearerAuth: []
@@ -150,6 +273,7 @@ paths:
 
   /api/reports/as-of:
     get:
+      operationId: getMembersAsOf
       summary: Get members as of a specific date
       security:
         - bearerAuth: []
@@ -173,6 +297,75 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Member'
+
+  /api/reports/treasury:
+    get:
+      operationId: getTreasuryReport
+      summary: Get hierarchical financial report
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Treasury report
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TreasuryItem'
+
+  /api/reports/stats:
+    get:
+      operationId: getStats
+      summary: Get membership statistics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Statistics data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatRow'
+
+  /api/forms:
+    get:
+      operationId: getForms
+      summary: Get available forms
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of forms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Form'
+
+  /api/commands/submit-form:
+    post:
+      operationId: submitForm
+      summary: Submit a form response
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormResponseRequest'
+      responses:
+        '201':
+          description: Form submitted
 
 components:
   securitySchemes:
@@ -214,6 +407,35 @@ components:
         user:
           $ref: '#/components/schemas/User'
 
+    OrgNode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        parent_id:
+          type: string
+          nullable: true
+        path:
+          type: string
+        policy:
+          type: object
+          additionalProperties: true
+
+    CreateOrgRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        parent_id:
+          type: string
+        policy:
+          type: object
+          additionalProperties: true
+
     User:
       type: object
       properties:
@@ -221,10 +443,77 @@ components:
           type: string
         email:
           type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    MyMembership:
+      type: object
+      properties:
+        id:
+          type: string
         org_id:
+          type: string
+        org_name:
+          type: string
+        status:
           type: string
         role:
           type: string
+        balance:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+
+    Form:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        title:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+
+    FormResponseRequest:
+      type: object
+      required:
+        - form_id
+        - answers
+      properties:
+        form_id:
+          type: string
+        answers:
+          type: object
+          additionalProperties: true
+
+    StatRow:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: integer
+
+    TreasuryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        local_balance:
+          type: integer
+        total_branch_balance:
+          type: integer
 
     Member:
       type: object

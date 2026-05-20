@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "generate-api": "openapi --input ../openapi.yaml --output ./src/api --client fetch",
+    "generate-api": "openapi-codegen gen chronos",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "test:e2e": "CI=true playwright test",
@@ -18,11 +18,15 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
+    "chart.js": "^4.5.1",
     "pinia": "^3.0.4",
     "vue": "^3.5.32",
+    "vue-chartjs": "^5.3.3",
     "vue-router": "^5.0.4"
   },
   "devDependencies": {
+    "@openapi-codegen/cli": "latest",
+    "@openapi-codegen/typescript": "latest",
     "@playwright/test": "^1.59.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.12.2",
@@ -37,7 +41,6 @@
     "eslint-plugin-vue": "~10.8.0",
     "jiti": "^2.6.1",
     "npm-run-all2": "^8.0.4",
-    "openapi-typescript-codegen": "^0.30.0",
     "oxfmt": "^0.45.0",
     "oxlint": "~1.60.0",
     "postcss": "^8.5.14",

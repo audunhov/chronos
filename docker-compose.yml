@@ -55,6 +55,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - ./openapi.yaml:/app/openapi.yaml:ro
     command: sh -c "npm install && npm run dev -- --host"
     depends_on:
       backend:

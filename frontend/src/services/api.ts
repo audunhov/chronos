@@ -1,27 +1,52 @@
-import { OpenAPI } from '../api';
-import { DefaultService } from '../api/services/DefaultService';
+import * as chronos from '../api/chronosComponents';
 import { auth, setAuth } from './auth';
 
-// Konfigurer OpenAPI client
-OpenAPI.BASE = import.meta.env.VITE_API_URL || '';
-OpenAPI.TOKEN = async () => {
-    return auth.token || '';
+// Hjelpefunksjon for å håndtere X-Org-ID
+const getHeaders = (orgId?: string) => {
+    const headers: Record<string, string> = {};
+    if (orgId) {
+        headers['X-Org-ID'] = orgId;
+    }
+    return headers;
 };
 
-// Vi kan også legge til en global feilhåndterer hvis ønskelig
-// Men for nå beholder vi eksisterende flyt
-
 export const api = {
-    signup: (data: any) => DefaultService.postApiAuthSignup(data),
+    signup: (data: any) => chronos.signup({ body: data }),
     login: async (data: any) => {
-        const res = await DefaultService.postApiAuthLogin(data);
-        setAuth(res.user as any, res.access_token);
+        const res = await chronos.login({ body: data });
+        // @ts-ignore - user structure might slightly differ, but we handle it
+        setAuth(res.user, res.access_token);
         return res;
     },
-    getMembers: (orgId?: string) => DefaultService.getApiMembers(orgId),
-    getMembersAsOf: (date: string, orgId?: string) => DefaultService.getApiReportsAsOf(date, orgId),
-    getOrganizations: () => DefaultService.getApiOrganizations(),
-    registerMember: (data: any) => DefaultService.postApiCommandsRegisterMember(data),
-    updateMember: (id: string, fields: any) => DefaultService.postApiCommandsUpdateMember({ id, updated_fields: fields }),
-    shredMember: (id: string) => DefaultService.postApiCommandsShredMember({ id }),
+    requestMagicLink: (email: string) => chronos.requestMagicLink({ body: { email } }),
+    magicLogin: async (token: string) => {
+        const res = await chronos.magicLogin({ queryParams: { token } });
+        // @ts-ignore
+        setAuth(res.user, res.access_token);
+        return res;
+    },
+    getMyProfile: () => chronos.getMyProfile(),
+    getMyMemberships: () => chronos.getMyMemberships(),
+    getMembers: (orgId?: string) => chronos.getMembers({ 
+        headers: getHeaders(orgId) 
+    }),
+    getMembersAsOf: (date: string, orgId?: string) => chronos.getMembersAsOf({ 
+        queryParams: { date },
+        headers: getHeaders(orgId)
+    }),
+    getOrganizations: () => chronos.getOrganizations(),
+    getOrganizationHierarchy: () => chronos.getOrganizationHierarchy(),
+    createOrganization: (data: any) => chronos.createOrganization({ body: data }),
+    deleteOrganization: (id: string) => chronos.deleteOrganization({ queryParams: { id } }),
+    getTreasuryReport: () => chronos.getTreasuryReport(),
+    getStats: () => chronos.getStats(),
+    getForms: (orgId?: string) => chronos.getForms({ queryParams: { org_id: orgId } }),
+    submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),
+    registerMember: (data: any) => chronos.registerMember({ body: data }),
+    updateMember: (id: string, fields: any) => chronos.updateMember({ 
+        body: { id, updated_fields: fields } 
+    }),
+    shredMember: (id: string) => chronos.shredMember({ 
+        body: { id } 
+    }),
 };

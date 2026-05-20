@@ -59,7 +59,8 @@ func TestDST_HierarchicalAccess(t *testing.T) {
 		req.Header.Set("X-Org-ID", targetOrg.id)
 
 		// Kjør gjennom AuthMiddleware
-		handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := &Server{db: nil} // db er nil her, så vi må kanskje mocke den hvis testen krever db tilgang
+		handler := server.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctxOrgID := r.Context().Value(OrgIDKey).(string)
 			ctxRole := r.Context().Value(RoleKey).(string)
 
@@ -136,7 +137,8 @@ func TestDST_AccessControl(t *testing.T) {
 		}
 
 		// Kjør gjennom middleware
-		handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := &Server{db: nil}
+		handler := server.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Sjekk context verdier (Dette er det DST verifiserer)
 			ctxUserID := r.Context().Value(UserIDKey).(string)
 			ctxOrgID := r.Context().Value(OrgIDKey).(string)

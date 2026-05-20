@@ -12,18 +12,13 @@ const (
 	StatusShredded = "SHREDDED"
 )
 
-// Event interface defines a generic event
-type Event interface {
-	EventType() string
-}
-
-// Member struct represents the current state of a member
-type Member struct {
+// Membership struct represents the relationship between a User and an Organization
+type Membership struct {
 	ID         string         `json:"id"`
+	UserID     string         `json:"user_id"`
 	OrgID      string         `json:"org_id"`
-	Name       string         `json:"name"`
-	Email      string         `json:"email"`
 	Status     string         `json:"status"`
+	Role       string         `json:"role"`
 	Metadata   map[string]any `json:"metadata"`
 	Balance    int            `json:"balance"`
 	FeeFormula string         `json:"fee_formula"`
@@ -33,32 +28,46 @@ type Member struct {
 
 // Constants for event types
 const (
-	EventTypeMemberRegistered           = "MemberRegistered"
-	EventTypeMemberUpdated              = "MemberUpdated"
+	EventTypeMembershipCreated           = "MembershipCreated"
+	EventTypeMembershipUpdated           = "MembershipUpdated"
 	EventTypeMembershipFeeFormulaDefined = "MembershipFeeFormulaDefined"
 	EventTypeFeeGenerated               = "FeeGenerated"
 	EventTypePaymentReceived            = "PaymentReceived"
-	EventTypeMemberShredded             = "MemberShredded"
-	EventTypeMemberOrgMoved             = "MemberOrgMoved"
+	EventTypeMembershipShredded          = "MembershipShredded"
+	EventTypeMembershipOrgMoved          = "MembershipOrgMoved"
 )
 
 // Event payloads
-type MemberRegistered struct {
+type MembershipCreated struct {
 	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Email     string         `json:"email"`
+	UserID    string         `json:"user_id"`
 	OrgID     string         `json:"org_id"`
+	Role      string         `json:"role"`
 	Metadata  map[string]any `json:"metadata"`
 	Timestamp time.Time      `json:"timestamp"`
 }
-func (e MemberRegistered) EventType() string { return EventTypeMemberRegistered }
+func (e MembershipCreated) EventType() string { return EventTypeMembershipCreated }
 
-type MemberUpdated struct {
+type MembershipUpdated struct {
 	ID            string         `json:"id"`
 	UpdatedFields map[string]any `json:"updated_fields"`
 	Timestamp     time.Time      `json:"timestamp"`
 }
-func (e MemberUpdated) EventType() string { return EventTypeMemberUpdated }
+func (e MembershipUpdated) EventType() string { return EventTypeMembershipUpdated }
+
+type MembershipOrgMoved struct {
+	ID        string    `json:"id"`
+	FromOrgID string    `json:"from_org_id"`
+	ToOrgID   string    `json:"to_org_id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+func (e MembershipOrgMoved) EventType() string { return EventTypeMembershipOrgMoved }
+
+type MembershipShredded struct {
+	ID        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+func (e MembershipShredded) EventType() string { return EventTypeMembershipShredded }
 
 type MembershipFeeFormulaDefined struct {
 	ID        string    `json:"id"`
@@ -82,51 +91,31 @@ type PaymentReceived struct {
 }
 func (e PaymentReceived) EventType() string { return EventTypePaymentReceived }
 
-type MemberShredded struct {
-	ID        string    `json:"id"`
-	Timestamp time.Time `json:"timestamp"`
-}
-func (e MemberShredded) EventType() string { return EventTypeMemberShredded }
-
-type MemberOrgMoved struct {
-	ID        string    `json:"id"`
-	FromOrgID string    `json:"from_org_id"`
-	ToOrgID   string    `json:"to_org_id"`
-	Timestamp time.Time `json:"timestamp"`
-}
-func (e MemberOrgMoved) EventType() string { return EventTypeMemberOrgMoved }
-
-// ApplyEvent mutates the Member state in-memory based on the event type
-func ApplyEvent(m *Member, e Event) error {
-	// Invariant: Et shreddet medlem kan aldri endres igjen (GDPR hard-limit)
+func ApplyMembershipEvent(m *Membership, e Event) error {
 	if m.Status == StatusShredded {
-		// Vi tillater ikke engang re-registrering av samme ID hvis den er shreddet
-		return fmt.Errorf("cannot modify a shredded member: %s", m.ID)
+		return fmt.Errorf("cannot modify a shredded membership: %s", m.ID)
 	}
 
 	switch v := e.(type) {
-	case MemberRegistered:
+	case MembershipCreated:
 		m.ID = v.ID
+		m.UserID = v.UserID
 		m.OrgID = v.OrgID
-		m.Name = v.Name
-		m.Email = v.Email
+		m.Role = v.Role
 		m.Status = StatusActive
 		m.Metadata = v.Metadata
 		m.CreatedAt = v.Timestamp
 		m.UpdatedAt = v.Timestamp
 
-	case MemberUpdated:
+	case MembershipUpdated:
 		for key, val := range v.UpdatedFields {
 			switch key {
-			case "name":
-				if s, ok := val.(string); ok { m.Name = s }
-			case "email":
-				if s, ok := val.(string); ok { m.Email = s }
 			case "status":
-				// Invariant: Kan ikke sette status til SHREDDED via vanlig update
 				if s, ok := val.(string); ok && s != StatusShredded {
 					m.Status = s
 				}
+			case "role":
+				if s, ok := val.(string); ok { m.Role = s }
 			case "metadata":
 				if md, ok := val.(map[string]any); ok { m.Metadata = md }
 			}
@@ -145,19 +134,18 @@ func ApplyEvent(m *Member, e Event) error {
 		m.Balance += v.Amount
 		m.UpdatedAt = v.Timestamp
 
-	case MemberOrgMoved:
+	case MembershipOrgMoved:
 		m.OrgID = v.ToOrgID
 		m.UpdatedAt = v.Timestamp
 
-	case MemberShredded:
-		m.Name = "REDACTED"
-		m.Email = "redacted@example.com"
-		m.Metadata = nil
+	case MembershipShredded:
 		m.Status = StatusShredded
+		m.Metadata = nil
+		m.UserID = "REDACTED" // Bryt koblingen til brukeren
 		m.UpdatedAt = v.Timestamp
 
 	default:
-		return fmt.Errorf("unknown event type: %T", e)
+		return fmt.Errorf("unknown membership event type: %T", e)
 	}
 	return nil
 }

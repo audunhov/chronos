@@ -8,7 +8,21 @@ import (
 	"time"
 )
 
-func GetMembersAsOf(ctx context.Context, db *sql.DB, targetDate time.Time) (map[string]*domain.Member, error) {
+type HistoricalMember struct {
+	ID         string         `json:"id"`
+	UserID     string         `json:"user_id"`
+	OrgID      string         `json:"org_id"`
+	Name       string         `json:"name"`
+	Email      string         `json:"email"`
+	Status     string         `json:"status"`
+	Role       string         `json:"role"`
+	Balance    int            `json:"balance"`
+	FeeFormula string         `json:"fee_formula"`
+	Metadata   map[string]any `json:"metadata"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+}
+
+func GetMembersAsOf(ctx context.Context, db *sql.DB, targetDate time.Time) (map[string]*HistoricalMember, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT aggregate_id, event_type, payload, created_at 
 		FROM event_store 
@@ -19,7 +33,8 @@ func GetMembersAsOf(ctx context.Context, db *sql.DB, targetDate time.Time) (map[
 	}
 	defer rows.Close()
 
-	members := make(map[string]*domain.Member)
+	users := make(map[string]*domain.User)
+	memberships := make(map[string]*domain.Membership)
 
 	for rows.Next() {
 		var aggregateID string
@@ -30,46 +45,83 @@ func GetMembersAsOf(ctx context.Context, db *sql.DB, targetDate time.Time) (map[
 			return nil, err
 		}
 
-		m, ok := members[aggregateID]
-		if !ok {
-			m = &domain.Member{}
-			members[aggregateID] = m
-		}
-
-		var event domain.Event
 		switch eventType {
-		case domain.EventTypeMemberRegistered:
-			var e domain.MemberRegistered
+		// USER EVENTS
+		case domain.EventTypeUserCreated:
+			var e domain.UserCreated
 			json.Unmarshal(payload, &e)
-			event = e
-		case domain.EventTypeMemberUpdated:
-			var e domain.MemberUpdated
+			u := users[aggregateID]
+			if u == nil {
+				u = &domain.User{}
+				users[aggregateID] = u
+			}
+			domain.ApplyUserEvent(u, e)
+		case domain.EventTypeUserProfileUpdated:
+			var e domain.UserProfileUpdated
 			json.Unmarshal(payload, &e)
-			event = e
-		case domain.EventTypeMembershipFeeFormulaDefined:
-			var e domain.MembershipFeeFormulaDefined
+			if u := users[aggregateID]; u != nil {
+				domain.ApplyUserEvent(u, e)
+			}
+
+		// MEMBERSHIP EVENTS
+		case domain.EventTypeMembershipCreated:
+			var e domain.MembershipCreated
 			json.Unmarshal(payload, &e)
-			event = e
+			m := memberships[aggregateID]
+			if m == nil {
+				m = &domain.Membership{}
+				memberships[aggregateID] = m
+			}
+			domain.ApplyMembershipEvent(m, e)
+		case domain.EventTypeMembershipUpdated:
+			var e domain.MembershipUpdated
+			json.Unmarshal(payload, &e)
+			if m := memberships[aggregateID]; m != nil {
+				domain.ApplyMembershipEvent(m, e)
+			}
 		case domain.EventTypeFeeGenerated:
 			var e domain.FeeGenerated
 			json.Unmarshal(payload, &e)
-			event = e
+			if m := memberships[aggregateID]; m != nil {
+				domain.ApplyMembershipEvent(m, e)
+			}
 		case domain.EventTypePaymentReceived:
 			var e domain.PaymentReceived
 			json.Unmarshal(payload, &e)
-			event = e
-		case domain.EventTypeMemberShredded:
-			var e domain.MemberShredded
+			if m := memberships[aggregateID]; m != nil {
+				domain.ApplyMembershipEvent(m, e)
+			}
+		case domain.EventTypeMembershipShredded:
+			var e domain.MembershipShredded
 			json.Unmarshal(payload, &e)
-			event = e
-		}
-
-		if event != nil {
-			if err := domain.ApplyEvent(m, event); err != nil {
-				return nil, err
+			if m := memberships[aggregateID]; m != nil {
+				domain.ApplyMembershipEvent(m, e)
 			}
 		}
 	}
 
-	return members, nil
+	// Join them in memory
+	result := make(map[string]*HistoricalMember)
+	for id, m := range memberships {
+		u := users[m.UserID]
+		if u == nil {
+			continue // Should not happen if data is consistent
+		}
+
+		result[id] = &HistoricalMember{
+			ID:         m.ID,
+			UserID:     m.UserID,
+			OrgID:      m.OrgID,
+			Name:       u.Name,
+			Email:      u.Email,
+			Status:     m.Status,
+			Role:       m.Role,
+			Balance:    m.Balance,
+			FeeFormula: m.FeeFormula,
+			Metadata:   m.Metadata,
+			UpdatedAt:  m.UpdatedAt,
+		}
+	}
+
+	return result, nil
 }

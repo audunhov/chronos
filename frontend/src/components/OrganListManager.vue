@@ -24,9 +24,11 @@ const fetchOrgans = async () => {
     if (!selectedOrg.value) return
     loading.value = true
     try {
-        organs.value = await api.getOrgans(selectedOrg.value)
+        const data = await api.getOrgans(selectedOrg.value)
+        organs.value = Array.isArray(data) ? data : []
     } catch (e) {
         console.error(e)
+        organs.value = []
     } finally {
         loading.value = false
     }

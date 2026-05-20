@@ -28,9 +28,11 @@ const fetchReactions = async () => {
     if (!selectedOrg.value) return
     loading.value = true
     try {
-        reactions.value = await api.getReactions(selectedOrg.value)
+        const data = await api.getReactions(selectedOrg.value)
+        reactions.value = Array.isArray(data) ? data : []
     } catch (e) {
         console.error(e)
+        reactions.value = []
     } finally {
         loading.value = false
     }

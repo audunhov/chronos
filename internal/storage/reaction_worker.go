@@ -4,17 +4,118 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
+	"register/internal/domain"
 	"time"
 )
 
 type ReactionWorker struct {
-	db *sql.DB
+	db       *sql.DB
+	executor *domain.PipelineExecutor
 }
 
 func NewReactionWorker(db *sql.DB) *ReactionWorker {
-	return &ReactionWorker{db: db}
+	w := &ReactionWorker{db: db}
+	w.executor = &domain.PipelineExecutor{
+		Operations: map[string]func(inputs map[string]any) (map[string]any, error){
+			"FindOrg":   w.opFindOrg,
+			"FindOrgan": w.opFindOrgan,
+			"FindRole":  w.opFindRole,
+			"Template":  w.opTemplate,
+			"SendEmail": w.opSendEmail,
+		},
+	}
+	return w
 }
+
+// --- Production Operations ---
+
+func (w *ReactionWorker) opFindOrg(inputs map[string]any) (map[string]any, error) {
+	startID, _ := inputs["start_org_id"].(string)
+	relation, _ := inputs["relation"].(string)
+	
+	if startID == "" { return nil, fmt.Errorf("missing start_org_id") }
+
+	var query string
+	if relation == "parent" {
+		query = "SELECT parent_id, name FROM organization_hierarchy WHERE id = $1"
+	} else {
+		query = "SELECT id, name FROM organization_hierarchy WHERE id = $1"
+	}
+
+	var id, name string
+	var parentID sql.NullString
+	err := w.db.QueryRow(query, startID).Scan(&parentID, &name)
+	if err != nil { return nil, err }
+	
+	if relation == "parent" && parentID.Valid {
+		id = parentID.String
+		// Hent navn for parent
+		_ = w.db.QueryRow("SELECT name FROM organization_hierarchy WHERE id = $1", id).Scan(&name)
+	} else if relation != "parent" {
+		id = startID
+	}
+
+	return map[string]any{"org_id": id, "name": name}, nil
+}
+
+func (w *ReactionWorker) opFindOrgan(inputs map[string]any) (map[string]any, error) {
+	orgID, _ := inputs["org_id"].(string)
+	name, _ := inputs["organ_name"].(string)
+	
+	var id string
+	err := w.db.QueryRow("SELECT id FROM organs WHERE org_id = $1 AND name = $2", orgID, name).Scan(&id)
+	if err != nil { return nil, err }
+
+	return map[string]any{"organ_id": id}, nil
+}
+
+func (w *ReactionWorker) opFindRole(inputs map[string]any) (map[string]any, error) {
+	targetID, _ := inputs["target_id"].(string)
+	roleType, _ := inputs["role_type"].(string)
+
+	query := `
+		SELECT ra.user_id, u.email, u.name 
+		FROM role_assignments ra
+		JOIN users u ON ra.user_id = u.id
+		WHERE (ra.org_id = $1 OR ra.organ_id = $1) AND ra.role_type = $2
+		LIMIT 1`
+	
+	var userID, email, name string
+	err := w.db.QueryRow(query, targetID, roleType).Scan(&userID, &email, &name)
+	if err != nil { return nil, err }
+
+	return map[string]any{"user_id": userID, "email": email, "name": name}, nil
+}
+
+func (w *ReactionWorker) opTemplate(inputs map[string]any) (map[string]any, error) {
+	// Forenklet template-logikk
+	tmplName, _ := inputs["template_name"].(string)
+	userName, _ := inputs["user_name"].(string)
+	
+	return map[string]any{
+		"subject": "Varsel fra Chronos: " + tmplName,
+		"body":    fmt.Sprintf("Hei, dette er et automatisk varsel angående %s.", userName),
+	}, nil
+}
+
+func (w *ReactionWorker) opSendEmail(inputs map[string]any) (map[string]any, error) {
+	to, _ := inputs["to_email"].(string)
+	subject, _ := inputs["subject"].(string)
+	body, _ := inputs["body"].(string)
+
+	if to == "" { return nil, fmt.Errorf("missing recipient") }
+
+	_, err := w.db.Exec(`
+		INSERT INTO email_outbox (recipient_email, subject, body_html) 
+		VALUES ($1, $2, $3)`,
+		to, subject, body)
+	
+	return map[string]any{"success": err == nil}, err
+}
+
+// --- Worker Loop ---
 
 func (w *ReactionWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
@@ -65,9 +166,6 @@ func (w *ReactionWorker) processReactions(ctx context.Context, lastID *int64) er
 }
 
 func (w *ReactionWorker) handleEvent(ctx context.Context, aggregateID, eventType string, payload []byte) error {
-	// Finn alle reactions for dette eventet
-	// Merk: Her forenkler vi og sjekker alle organisasjoner. 
-	// I en produksjons-app ville vi kanskje ha filtrert på OrgID i eventet.
 	rows, err := w.db.QueryContext(ctx, "SELECT action_type, config FROM event_reactions WHERE trigger_event = $1", eventType)
 	if err != nil {
 		return err
@@ -81,26 +179,22 @@ func (w *ReactionWorker) handleEvent(ctx context.Context, aggregateID, eventType
 			continue
 		}
 
-		var config map[string]any
-		json.Unmarshal(configJSON, &config)
+		if actionType == "PIPELINE_DAG" {
+			var config domain.PipelineConfig
+			if err := json.Unmarshal(configJSON, &config); err != nil {
+				continue
+			}
 
-		switch actionType {
-		case "SEND_EMAIL":
-			w.queueEmailReaction(ctx, aggregateID, config)
+			// Forbered trigger-data fra event payload
+			var payloadMap map[string]any
+			json.Unmarshal(payload, &payloadMap)
+
+			// Kjør DAG
+			if err := w.executor.Execute(config, payloadMap); err != nil {
+				log.Printf("Pipeline execution failed: %v", err)
+			}
 		}
 	}
 
 	return nil
-}
-
-func (w *ReactionWorker) queueEmailReaction(ctx context.Context, aggregateID string, config map[string]any) {
-	templateID, _ := config["template_id"].(string)
-	recipient, _ := config["recipient"].(string)
-	
-	if templateID == "" || recipient == "" { return }
-
-	_, _ = w.db.ExecContext(ctx, `
-		INSERT INTO email_outbox (recipient_email, template_id, context) 
-		VALUES ($1, $2, $3)`,
-		recipient, templateID, `{"aggregate_id": "`+aggregateID+`"}`)
 }

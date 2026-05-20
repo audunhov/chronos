@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"register/internal/domain"
 	"register/internal/reports"
@@ -163,7 +164,7 @@ func (s *Server) GetMembersHandler(w http.ResponseWriter, r *http.Request) {
 		var metadata []byte
 		var feeFormula sql.NullString
 		if err := rows.Scan(&m.ID, &m.UserID, &m.OrgID, &m.Name, &m.Email, &m.Status, &m.Role, &m.Balance, &feeFormula, &metadata, &m.UpdatedAt); err != nil {
-			fmt.Printf("Scan error in GetMembers: %v\n", err)
+			log.Printf("Scan error in GetMembers: %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -179,7 +180,7 @@ func (s *Server) GetMembersHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetOrganizationsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), "SELECT DISTINCT org_id::text FROM membership_view UNION SELECT id::text FROM organization_hierarchy")
 	if err != nil {
-		fmt.Printf("GetOrganizations error: %v\n", err)
+		log.Printf("GetOrganizations error: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -605,7 +606,7 @@ func (s *Server) GetFormsHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
-		fmt.Printf("GetForms error: %v (Query: %s, OrgID: %s)\n", err, query, orgID)
+		log.Printf("GetForms error: %v (Query: %s, OrgID: %s)\n", err, query, orgID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -687,7 +688,7 @@ func (s *Server) CreateFormHandler(w http.ResponseWriter, r *http.Request) {
 		id, req.OrgID, req.Title, schemaJSON)
 
 	if err != nil {
-		fmt.Printf("CreateForm error: %v (OrgID: %s)\n", err, req.OrgID)
+		log.Printf("CreateForm error: %v (OrgID: %s)\n", err, req.OrgID)
 		http.Error(w, "Failed to create form: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

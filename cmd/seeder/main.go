@@ -123,14 +123,13 @@ func main() {
 					Period:    "2026",
 					Timestamp: time.Now().AddDate(0, 0, -rng.Intn(100)),
 				}
-				_ = es.Append(ctx, membershipID, int64(j+2), feeEvent)
+				_ = es.Append(ctx, membershipID, j+2, feeEvent)
 			}
 		}
 	}
 	log.Println("Seeded users with membership and financial history")
 
 	// 4. Email Templates
-	templateID := uuid.New().String()
 	_, _ = db.ExecContext(ctx, `
 		INSERT INTO email_templates (org_id, name, subject, body_html) 
 		VALUES ($1, 'Velkomst', 'Velkommen til {{.OrgName}}', '<h1>Hei {{.UserName}}!</h1><p>Velkommen som medlem.</p>')

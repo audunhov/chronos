@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"register/internal/domain"
@@ -83,7 +83,7 @@ func (s *Server) SignupHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.eventStore.Append(r.Context(), membershipID, 1, membershipEvent); err != nil {
 			// Vi logger feilen, men brukeren er allerede opprettet
-			fmt.Printf("Failed to create initial membership: %v\n", err)
+			log.Printf("Failed to create initial membership: %v\n", err)
 		}
 	}
 
@@ -168,7 +168,7 @@ func (s *Server) RequestMagicLinkHandler(w http.ResponseWriter, r *http.Request)
 
 	// I en ekte app ville vi sendt en e-post her. 
 	// For nå logger vi det til konsollen så brukeren kan simulere det.
-	fmt.Printf("MAGIC LINK for %s: http://localhost:5173/magic-login?token=%s\n", req.Email, token)
+	log.Printf("MAGIC LINK for %s: http://localhost:5173/magic-login?token=%s\n", req.Email, token)
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Magic link generated (Check server logs)."})

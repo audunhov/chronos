@@ -113,6 +113,97 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+    patch:
+      operationId: updateMyProfile
+      summary: Update personal information
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated
+
+  /api/admin/reactions:
+    get:
+      operationId: getReactions
+      summary: Get event reactions for an organization (includes inherited)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of reactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventReaction'
+    post:
+      operationId: createReaction
+      summary: Create a new event reaction
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReactionRequest'
+      responses:
+        '201':
+          description: Reaction created
+
+  /api/admin/organs:
+    get:
+      operationId: getOrgans
+      summary: Get organs for an organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of organs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Organ'
+    post:
+      operationId: createOrgan
+      summary: Create a new organ
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganRequest'
+      responses:
+        '201':
+          description: Organ created
 
   /api/me/memberships:
     get:

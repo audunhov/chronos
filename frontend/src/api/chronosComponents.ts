@@ -110,6 +110,118 @@ export const getMyProfile = (signal?: AbortSignal) =>
     signal,
   });
 
+export type UpdateMyProfileError = Fetcher.ErrorWrapper<undefined>;
+
+export type UpdateMyProfileRequestBody = {
+  name?: string;
+  email?: string;
+};
+
+export type UpdateMyProfileVariables = {
+  body?: UpdateMyProfileRequestBody;
+};
+
+export const updateMyProfile = (
+  variables: UpdateMyProfileVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    UpdateMyProfileError,
+    UpdateMyProfileRequestBody,
+    {},
+    {},
+    {}
+  >({ url: "/api/me/profile", method: "patch", ...variables, signal });
+
+export type GetReactionsQueryParams = {
+  org_id: string;
+};
+
+export type GetReactionsError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetReactionsResponse = Schemas.EventReaction[];
+
+export type GetReactionsVariables = {
+  queryParams: GetReactionsQueryParams;
+};
+
+export const getReactions = (
+  variables: GetReactionsVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetReactionsResponse,
+    GetReactionsError,
+    undefined,
+    {},
+    GetReactionsQueryParams,
+    {}
+  >({ url: "/api/admin/reactions", method: "get", ...variables, signal });
+
+export type CreateReactionError = Fetcher.ErrorWrapper<undefined>;
+
+export type CreateReactionVariables = {
+  body: Schemas.CreateReactionRequest;
+};
+
+export const createReaction = (
+  variables: CreateReactionVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    CreateReactionError,
+    Schemas.CreateReactionRequest,
+    {},
+    {},
+    {}
+  >({ url: "/api/admin/reactions", method: "post", ...variables, signal });
+
+export type GetOrgansQueryParams = {
+  org_id: string;
+};
+
+export type GetOrgansError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetOrgansResponse = Schemas.Organ[];
+
+export type GetOrgansVariables = {
+  queryParams: GetOrgansQueryParams;
+};
+
+export const getOrgans = (
+  variables: GetOrgansVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetOrgansResponse,
+    GetOrgansError,
+    undefined,
+    {},
+    GetOrgansQueryParams,
+    {}
+  >({ url: "/api/admin/organs", method: "get", ...variables, signal });
+
+export type CreateOrganError = Fetcher.ErrorWrapper<undefined>;
+
+export type CreateOrganVariables = {
+  body: Schemas.CreateOrganRequest;
+};
+
+export const createOrgan = (
+  variables: CreateOrganVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    CreateOrganError,
+    Schemas.CreateOrganRequest,
+    {},
+    {},
+    {}
+  >({ url: "/api/admin/organs", method: "post", ...variables, signal });
+
 export type GetMyMembershipsError = Fetcher.ErrorWrapper<undefined>;
 
 export type GetMyMembershipsResponse = Schemas.MyMembership[];

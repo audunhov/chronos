@@ -79,6 +79,15 @@ func main() {
 			server.GetOrgansHandler(w, r)
 		}
 	})
+	apiMux.HandleFunc("/admin/organs/members", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			server.AssignOrganMemberHandler(w, r)
+		} else if r.Method == http.MethodDelete {
+			server.RevokeOrganMemberHandler(w, r)
+		} else {
+			server.GetOrganMembersHandler(w, r)
+		}
+	})
 	apiMux.HandleFunc("/commands/register-member", server.RegisterMemberHandler)
 	apiMux.HandleFunc("/commands/update-member", server.UpdateMemberHandler)
 	apiMux.HandleFunc("/commands/shred-member", server.ShredMemberHandler)

@@ -222,6 +222,78 @@ export const createOrgan = (
     {}
   >({ url: "/api/admin/organs", method: "post", ...variables, signal });
 
+export type GetOrganMembersQueryParams = {
+  organ_id: string;
+};
+
+export type GetOrganMembersError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetOrganMembersResponse = Schemas.OrganMember[];
+
+export type GetOrganMembersVariables = {
+  queryParams: GetOrganMembersQueryParams;
+};
+
+export const getOrganMembers = (
+  variables: GetOrganMembersVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetOrganMembersResponse,
+    GetOrganMembersError,
+    undefined,
+    {},
+    GetOrganMembersQueryParams,
+    {}
+  >({ url: "/api/admin/organs/members", method: "get", ...variables, signal });
+
+export type AssignOrganMemberError = Fetcher.ErrorWrapper<undefined>;
+
+export type AssignOrganMemberVariables = {
+  body: Schemas.AssignOrganMemberRequest;
+};
+
+export const assignOrganMember = (
+  variables: AssignOrganMemberVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    AssignOrganMemberError,
+    Schemas.AssignOrganMemberRequest,
+    {},
+    {},
+    {}
+  >({ url: "/api/admin/organs/members", method: "post", ...variables, signal });
+
+export type RevokeOrganMemberQueryParams = {
+  id: string;
+};
+
+export type RevokeOrganMemberError = Fetcher.ErrorWrapper<undefined>;
+
+export type RevokeOrganMemberVariables = {
+  queryParams: RevokeOrganMemberQueryParams;
+};
+
+export const revokeOrganMember = (
+  variables: RevokeOrganMemberVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    RevokeOrganMemberError,
+    undefined,
+    {},
+    RevokeOrganMemberQueryParams,
+    {}
+  >({
+    url: "/api/admin/organs/members",
+    method: "delete",
+    ...variables,
+    signal,
+  });
+
 export type GetMyMembershipsError = Fetcher.ErrorWrapper<undefined>;
 
 export type GetMyMembershipsResponse = Schemas.MyMembership[];

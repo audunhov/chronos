@@ -205,6 +205,56 @@ paths:
         '201':
           description: Organ created
 
+  /api/admin/organs/members:
+    get:
+      operationId: getOrganMembers
+      summary: Get members of an organ
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: organ_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganMember'
+    post:
+      operationId: assignOrganMember
+      summary: Add a member to an organ
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignOrganMemberRequest'
+      responses:
+        '201':
+          description: Member assigned
+    delete:
+      operationId: revokeOrganMember
+      summary: Remove a member from an organ
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member removed
+
   /api/me/memberships:
     get:
       operationId: getMyMemberships
@@ -690,6 +740,39 @@ components:
         name:
           type: string
         parent_organ_id:
+          type: string
+        member_count:
+          type: integer
+
+    OrganMember:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AssignOrganMemberRequest:
+      type: object
+      required:
+        - organ_id
+        - user_id
+        - role_type
+      properties:
+        organ_id:
+          type: string
+        user_id:
+          type: string
+        role_type:
           type: string
 
     CreateOrganRequest:

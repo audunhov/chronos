@@ -364,7 +364,13 @@ func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.db.QueryContext(r.Context(), "SELECT id, org_id, name, parent_organ_id FROM organs WHERE org_id = $1", orgID)
+	query := `
+		SELECT o.id, o.org_id, o.name, o.parent_organ_id,
+		       (SELECT COUNT(*) FROM role_assignments WHERE organ_id = o.id) as member_count
+		FROM organs o 
+		WHERE o.org_id = $1`
+
+	rows, err := s.db.QueryContext(r.Context(), query, orgID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -376,13 +382,14 @@ func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 		OrgID         string  `json:"org_id"`
 		Name          string  `json:"name"`
 		ParentOrganID *string `json:"parent_organ_id"`
+		MemberCount   int     `json:"member_count"`
 	}
 
 	var organs []OrganResponse
 	for rows.Next() {
 		var o OrganResponse
 		var parentID sql.NullString
-		if err := rows.Scan(&o.ID, &o.OrgID, &o.Name, &parentID); err != nil {
+		if err := rows.Scan(&o.ID, &o.OrgID, &o.Name, &parentID, &o.MemberCount); err != nil {
 			continue
 		}
 		if parentID.Valid {
@@ -393,6 +400,127 @@ func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(organs)
+}
+
+func (s *Server) GetOrganMembersHandler(w http.ResponseWriter, r *http.Request) {
+	organID := r.URL.Query().Get("organ_id")
+	if organID == "" {
+		http.Error(w, "Missing organ_id", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		SELECT ra.id, ra.user_id, ra.role_type, u.name, u.email, ra.created_at
+		FROM role_assignments ra
+		JOIN users u ON ra.user_id = u.id
+		WHERE ra.organ_id = $1`
+	
+	rows, err := s.db.QueryContext(r.Context(), query, organID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type MemberRoleResponse struct {
+		ID        string    `json:"id"`
+		UserID    string    `json:"user_id"`
+		RoleType  string    `json:"role_type"`
+		Name      string    `json:"name"`
+		Email     string    `json:"email"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	var members []MemberRoleResponse
+	for rows.Next() {
+		var m MemberRoleResponse
+		if err := rows.Scan(&m.ID, &m.UserID, &m.RoleType, &m.Name, &m.Email, &m.CreatedAt); err != nil {
+			continue
+		}
+		members = append(members, m)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(members)
+}
+
+func (s *Server) AssignOrganMemberHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrganID  string `json:"organ_id"`
+		UserID   string `json:"user_id"`
+		RoleType string `json:"role_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	// Finn org_id for organet
+	var orgID string
+	err := s.db.QueryRowContext(r.Context(), "SELECT org_id FROM organs WHERE id = $1", req.OrganID).Scan(&orgID)
+	if err != nil {
+		http.Error(w, "Organ not found", http.StatusNotFound)
+		return
+	}
+
+	id := uuid.New().String()
+	event := domain.RoleAssigned{
+		ID:        id,
+		UserID:    req.UserID,
+		OrgID:     orgID,
+		OrganID:   &req.OrganID,
+		RoleType:  req.RoleType,
+		Timestamp: time.Now(),
+	}
+
+	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Oppdater read model
+	_, err = s.db.ExecContext(r.Context(), `
+		INSERT INTO role_assignments (id, user_id, org_id, organ_id, role_type)
+		VALUES ($1, $2, $3, $4, $5)`,
+		id, req.UserID, orgID, req.OrganID, req.RoleType)
+	
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) RevokeOrganMemberHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing assignment ID", http.StatusBadRequest)
+		return
+	}
+
+	event := domain.RoleRevoked{
+		ID:        id,
+		Timestamp: time.Now(),
+	}
+
+	// Vi append-er til den samme aggregate_id (assignment id)
+	// Trenger å finne gjeldende versjon
+	var version int
+	s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", id).Scan(&version)
+
+	if err := s.eventStore.Append(r.Context(), id, version+1, event); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err := s.db.ExecContext(r.Context(), "DELETE FROM role_assignments WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) CreateOrganHandler(w http.ResponseWriter, r *http.Request) {

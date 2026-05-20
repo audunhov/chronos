@@ -127,6 +127,25 @@ export type Organ = {
   org_id?: string;
   name?: string;
   parent_organ_id?: string;
+  member_count?: number;
+};
+
+export type OrganMember = {
+  id?: string;
+  user_id?: string;
+  name?: string;
+  email?: string;
+  role_type?: string;
+  /**
+   * @format date-time
+   */
+  created_at?: string;
+};
+
+export type AssignOrganMemberRequest = {
+  organ_id: string;
+  user_id: string;
+  role_type: string;
 };
 
 export type CreateOrganRequest = {

@@ -66,6 +66,7 @@ func main() {
 	apiMux.HandleFunc("/reports/treasury", server.GetTreasuryReportHandler)
 	apiMux.HandleFunc("/reports/stats", server.GetStatsHandler)
 	apiMux.HandleFunc("/forms", server.GetFormsHandler)
+	apiMux.HandleFunc("/commands/create-form", server.CreateFormHandler)
 	apiMux.HandleFunc("/commands/submit-form", server.SubmitFormResponseHandler)
 	
 	// Auth routes (Public)
@@ -92,7 +93,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: api.CORSMiddleware(mux),
+		Handler: server.LoggingMiddleware(api.CORSMiddleware(mux)),
 	}
 
 	// Graceful shutdown

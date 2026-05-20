@@ -40,7 +40,12 @@ export const api = {
     deleteOrganization: (id: string) => chronos.deleteOrganization({ queryParams: { id } }),
     getTreasuryReport: () => chronos.getTreasuryReport(),
     getStats: () => chronos.getStats(),
-    getForms: (orgId?: string) => chronos.getForms({ queryParams: { org_id: orgId } }),
+    getForms: (orgId?: string) => {
+        const queryParams: any = {};
+        if (orgId) queryParams.org_id = orgId;
+        return chronos.getForms({ queryParams });
+    },
+    createForm: (data: any) => chronos.createForm({ body: data }),
     submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),
     registerMember: (data: any) => chronos.registerMember({ body: data }),
     updateMember: (id: string, fields: any) => chronos.updateMember({ 

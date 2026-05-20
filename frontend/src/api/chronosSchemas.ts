@@ -76,6 +76,14 @@ export type FormResponseRequest = {
   };
 };
 
+export type CreateFormRequest = {
+  org_id: string;
+  title: string;
+  schema: {
+    [key: string]: any;
+  };
+};
+
 export type StatRow = {
   label?: string;
   value?: number;

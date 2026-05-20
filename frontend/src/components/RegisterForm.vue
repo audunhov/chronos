@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api } from '../services/api'
+import BButton from './base/BButton.vue'
+import BInput from './base/BInput.vue'
+import BCard from './base/BCard.vue'
 
 const emit = defineEmits(['registered', 'cancel'])
 
@@ -55,56 +58,47 @@ const requestMagicLink = async () => {
 </script>
 
 <template>
-  <div>
-    <h2 class="text-4xl font-black uppercase tracking-tighter mb-8 italic border-b-8 border-blue-400 pb-2 inline-block">REGISTRER</h2>
+  <div class="space-y-8">
+    <h2 class="text-6xl font-black uppercase tracking-tighter italic border-b-8 border-blue-400 pb-2 inline-block leading-none">REGISTRER</h2>
     
-    <div v-if="magicLinkSent" class="bg-green-100 border-4 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        <h4 class="text-xl font-black uppercase mb-2">SJEKK EPOST!</h4>
-        <p class="text-sm font-bold">Vi har sendt en magisk lenke til {{ form.email }}.</p>
-        <button @click="emit('cancel')" class="mt-6 brutalist-btn-primary w-full">FORSTÅTT</button>
+    <div v-if="magicLinkSent" class="bg-green-100 border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center">
+        <h4 class="text-3xl font-black uppercase mb-4 italic">SJEKK EPOST!</h4>
+        <p class="text-sm font-bold uppercase tracking-widest">Vi har sendt en magisk lenke til <br><span class="text-blue-600">{{ form.email }}</span></p>
+        <BButton @click="emit('cancel')" variant="primary" class="mt-8 w-full italic">FORSTÅTT</BButton>
     </div>
 
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
-      <div class="flex flex-col">
-        <label for="name" class="brutalist-label">Fullt navn</label>
-        <input type="text" id="name" v-model="form.name" required class="brutalist-input" placeholder="NAVNESEN" />
-      </div>
-      <div class="flex flex-col">
-        <label for="email" class="brutalist-label">E-postadresse</label>
-        <input type="email" id="email" v-model="form.email" required class="brutalist-input" placeholder="DIN@EPOST.NO" />
-      </div>
-      <div class="grid grid-cols-2 gap-4">
-          <div class="flex flex-col">
-            <label for="birth_year" class="brutalist-label">Fødselsår</label>
-            <input type="number" id="birth_year" v-model="form.birth_year" required class="brutalist-input" />
-          </div>
-          <div class="flex flex-col">
-            <label for="org_id" class="brutalist-label">Org-ID</label>
-            <input type="text" id="org_id" v-model="form.org_id" placeholder="ID" class="brutalist-input" />
-          </div>
+      <BInput v-model="form.name" label="Fullt navn" placeholder="NAVNESEN" required />
+      
+      <BInput v-model="form.email" type="email" label="E-postadresse" placeholder="DIN@EPOST.NO" required />
+
+      <div class="grid grid-cols-2 gap-6">
+        <BInput v-model="form.birth_year" type="number" label="Fødselsår" required />
+        <BInput v-model="form.org_id" label="Org-ID" placeholder="VALGFRITT" />
       </div>
       
       <div v-if="error" class="bg-red-500 text-white border-4 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        <p class="font-black">⚠️ {{ error }}</p>
-        <div v-if="conflict" class="mt-4 pt-4 border-t-2 border-black">
-            <p class="text-xs font-bold mb-4 uppercase">Du har allerede en profil hos oss!</p>
-            <button 
+        <p class="font-black italic uppercase">⚠️ {{ error }}</p>
+        <div v-if="conflict" class="mt-4 pt-4 border-t-2 border-black space-y-4">
+            <p class="text-xs font-black mb-4 uppercase tracking-widest">Du har allerede en profil hos oss!</p>
+            <BButton 
                 type="button" 
                 @click="requestMagicLink"
-                class="brutalist-btn bg-white text-black text-xs w-full py-2 hover:bg-yellow-400"
+                variant="secondary"
+                class="w-full text-xs"
             >
                 SEND MEG EN MAGIC LINK
-            </button>
+            </BButton>
         </div>
       </div>
 
-      <div class="mt-8 flex gap-4">
-        <button type="submit" :disabled="loading" class="brutalist-btn-primary flex-1 py-4 text-xl">
-          {{ loading ? 'LAGRER...' : 'FULLFØR' }}
-        </button>
-        <button type="button" @click="emit('cancel')" class="brutalist-btn-secondary px-6">
+      <div class="mt-12 flex gap-4">
+        <BButton type="submit" :loading="loading" variant="primary" class="flex-1 py-6 text-2xl italic">
+          FULLFØR
+        </BButton>
+        <BButton type="button" @click="emit('cancel')" variant="secondary" class="px-8">
           NEI
-        </button>
+        </BButton>
       </div>
     </form>
   </div>

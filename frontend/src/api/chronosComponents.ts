@@ -406,3 +406,22 @@ export const submitForm = (
     {},
     {}
   >({ url: "/api/commands/submit-form", method: "post", ...variables, signal });
+
+export type CreateFormError = Fetcher.ErrorWrapper<undefined>;
+
+export type CreateFormVariables = {
+  body: Schemas.CreateFormRequest;
+};
+
+export const createForm = (
+  variables: CreateFormVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    CreateFormError,
+    Schemas.CreateFormRequest,
+    {},
+    {},
+    {}
+  >({ url: "/api/commands/create-form", method: "post", ...variables, signal });

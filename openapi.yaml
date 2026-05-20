@@ -367,6 +367,22 @@ paths:
         '201':
           description: Form submitted
 
+  /api/commands/create-form:
+    post:
+      operationId: createForm
+      summary: Create a new form
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFormRequest'
+      responses:
+        '201':
+          description: Form created
+
 components:
   securitySchemes:
     bearerAuth:
@@ -490,6 +506,21 @@ components:
         form_id:
           type: string
         answers:
+          type: object
+          additionalProperties: true
+
+    CreateFormRequest:
+      type: object
+      required:
+        - org_id
+        - title
+        - schema
+      properties:
+        org_id:
+          type: string
+        title:
+          type: string
+        schema:
           type: object
           additionalProperties: true
 

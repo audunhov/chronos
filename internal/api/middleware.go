@@ -46,8 +46,37 @@ func CORSMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		
+		// Wrap ResponseWriter to capture status code
+		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		
+		next.ServeHTTP(wrapped, r)
+		
+		log.Printf("[%s] %s %d (%v)", r.Method, r.URL.Path, wrapped.status, time.Since(start))
+	})
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip auth for public endpoints if they somehow end up here
+		if strings.HasPrefix(r.URL.Path, "/auth/") || strings.HasPrefix(r.URL.Path, "/health/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, "Missing Authorization header", http.StatusUnauthorized)

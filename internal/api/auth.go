@@ -95,7 +95,8 @@ func (s *Server) SignupHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Invalid request"})
 		return
 	}
 
@@ -103,23 +104,27 @@ func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var passwordHash string
 
 	err := s.db.QueryRowContext(r.Context(),
-		"SELECT id, email, password_hash FROM users WHERE email = $1",
-		req.Email).Scan(&user.ID, &user.Email, &passwordHash)
+		"SELECT id, email, password_hash, role FROM users WHERE email = $1",
+		req.Email).Scan(&user.ID, &user.Email, &passwordHash, &user.Role)
 
 	if err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Invalid credentials"})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Invalid credentials"})
 		return
 	}
 
-	// For nå setter vi ingen org_id i tokenet ved login, 
-	// brukeren må sende X-Org-ID for å aksessere spesifikke orger.
-	// En fremtidig forbedring er å sette en "default" org her.
-	user.Role = "user" 
+	// Hvis brukeren har en org_id i DB, sett den
+	var dbOrgID sql.NullString
+	s.db.QueryRowContext(r.Context(), "SELECT org_id FROM users WHERE id = $1", user.ID).Scan(&dbOrgID)
+	if dbOrgID.Valid {
+		user.OrgID = dbOrgID.String
+	}
 
 	token, err := s.generateJWT(user)
 	if err != nil {
@@ -188,13 +193,11 @@ func (s *Server) LoginWithMagicLinkHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	var user User
-	err = s.db.QueryRowContext(r.Context(), "SELECT id, email FROM users WHERE id = $1", userID).Scan(&user.ID, &user.Email)
+	err = s.db.QueryRowContext(r.Context(), "SELECT id, email, role FROM users WHERE id = $1", userID).Scan(&user.ID, &user.Email, &user.Role)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusInternalServerError)
 		return
 	}
-
-	user.Role = "user"
 	jwtToken, err := s.generateJWT(user)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)

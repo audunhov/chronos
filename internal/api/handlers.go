@@ -488,20 +488,14 @@ func (s *Server) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Sjekk om den har barn
-	var hasChildren bool
-	s.db.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM organization_hierarchy WHERE parent_id = $1)", id).Scan(&hasChildren)
-	if hasChildren {
-		http.Error(w, "Cannot delete organization with children", http.StatusConflict)
-		return
-	}
-
 	_, err := s.db.ExecContext(r.Context(), "DELETE FROM organization_hierarchy WHERE id = $1", id)
 	if err != nil {
+		log.Printf("Failed to delete organization %s: %v", id, err)
 		http.Error(w, "Failed to delete: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("Successfully deleted organization %s (Cascaded dependencies)", id)
 	w.WriteHeader(http.StatusOK)
 }
 

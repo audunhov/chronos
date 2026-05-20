@@ -2,6 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../services/api'
 import type { OrgNode } from '../api'
+import BButton from './base/BButton.vue'
+import BCard from './base/BCard.vue'
+import BBadge from './base/BBadge.vue'
+import BInput from './base/BInput.vue'
+import BSelect from './base/BSelect.vue'
 
 const hierarchy = ref<OrgNode[]>([])
 const loading = ref(false)
@@ -40,10 +45,18 @@ const createOrg = async () => {
     }
 }
 
-const deleteOrg = async (id: string) => {
-    if (!confirm('Slett denne organisasjonen?')) return
+const deleteOrg = async (node: OrgNode) => {
+    const msg = `ADVARSEL: Er du helt sikker på at du vil slette "${node.name}"?\n\n` +
+                `Dette vil permanent slette:\n` +
+                `- Alle under-organisasjoner\n` +
+                `- Alle skjemaer og svar tilknyttet denne grenen\n` +
+                `- Alle rolletildelinger og policyer\n\n` +
+                `HANDLINGEN KAN IKKE ANGRES.`
+    
+    if (!confirm(msg)) return
+    
     try {
-        await api.deleteOrganization(id)
+        await api.deleteOrganization(node.id!)
         fetchHierarchy()
     } catch (e: any) {
         alert(e.message)
@@ -59,67 +72,81 @@ onMounted(fetchHierarchy)
 
 <template>
     <div class="space-y-8">
-        <div class="flex justify-between items-center">
-            <h2 class="text-2xl font-black uppercase">Organisasjonskart</h2>
-            <button @click="showCreate = true" class="brutalist-btn-primary text-xs">+ NY ENHET</button>
+        <div class="flex justify-between items-end border-b-8 border-black pb-4">
+            <div>
+                <h2 class="text-4xl font-black uppercase tracking-tighter italic">Organisasjonskart</h2>
+                <p class="text-xs font-bold uppercase text-gray-500">Struktur og tilgangsstyring</p>
+            </div>
+            <BButton @click="showCreate = true" variant="primary" class="text-xs py-2">+ NY ENHET</BButton>
         </div>
 
-        <div v-if="showCreate" class="brutalist-card bg-yellow-50 mb-8">
-            <h3 class="font-black uppercase mb-4 underline">Opprett ny enhet</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="flex flex-col">
-                    <label class="brutalist-label">Navn</label>
-                    <input v-model="newOrg.name" type="text" class="brutalist-input" placeholder="Navn..." />
-                </div>
-                <div class="flex flex-col">
-                    <label class="brutalist-label">Overordnet Enhet</label>
-                    <select v-model="newOrg.parent_id" class="brutalist-input">
+        <div v-if="showCreate">
+            <BCard class="bg-yellow-50 max-w-2xl mx-auto">
+                <h3 class="text-xl font-black uppercase mb-6 italic">Opprett ny enhet</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <BInput v-model="newOrg.name" label="Navn" placeholder="F.eks. Oslo Brettspillklubb" required />
+                    
+                    <BSelect v-model="newOrg.parent_id" label="Overordnet Enhet">
                         <option value="">Ingen (Rot)</option>
                         <option v-for="node in hierarchy" :key="node.id" :value="node.id">
                             {{ node.path }} ({{ node.name }})
                         </option>
-                    </select>
+                    </BSelect>
+                    
+                    <div class="flex items-center gap-4 md:col-span-2 p-4 border-2 border-black bg-white">
+                        <input type="checkbox" v-model="newOrg.allow_multiple" id="allow_mult" class="w-8 h-8 border-4 border-black" />
+                        <label for="allow_mult" class="font-black uppercase text-xs cursor-pointer">
+                            Tillat flere medlemskap (ADDITIV / UMBRELLA)
+                        </label>
+                    </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <input type="checkbox" v-model="newOrg.allow_multiple" id="allow_mult" class="w-6 h-6 border-4 border-black" />
-                    <label for="allow_mult" class="font-bold uppercase text-xs">Tillat flere medlemskap (Umbrella)</label>
+                <div class="mt-8 flex gap-4">
+                    <BButton @click="createOrg" variant="primary" class="flex-1 italic">LAGRE ENHET</BButton>
+                    <BButton @click="showCreate = false" variant="secondary">AVBRYT</BButton>
                 </div>
-            </div>
-            <div class="mt-8 flex gap-4">
-                <button @click="createOrg" class="brutalist-btn bg-black text-white px-8">LAGRE</button>
-                <button @click="showCreate = false" class="brutalist-btn bg-white">AVBRYT</button>
-            </div>
+            </BCard>
         </div>
 
-        <div class="overflow-x-auto shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
-            <table class="brutalist-table bg-white">
+        <BCard class="!p-0 overflow-hidden shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]">
+            <table class="brutalist-table">
                 <thead>
                     <tr>
                         <th class="brutalist-th">Hierarki & Navn</th>
-                        <th class="brutalist-th text-center">Policy</th>
-                        <th class="brutalist-th text-right">Handlinger</th>
+                        <th class="brutalist-th text-center w-32">Policy</th>
+                        <th class="brutalist-th text-right w-40">Handlinger</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr v-for="node in hierarchy" :key="node.id" class="hover:bg-gray-50 transition-colors">
+                <tbody class="bg-white">
+                    <tr v-if="loading" v-for="i in 5">
+                        <td colspan="3" class="brutalist-td animate-pulse bg-gray-50 h-12"></td>
+                    </tr>
+                    <tr v-else v-for="node in hierarchy" :key="node.id" class="hover:bg-blue-50 transition-colors">
                         <td class="brutalist-td">
-                            <div :style="{ marginLeft: (getDepth(node.path!) * 2) + 'rem' }" class="flex items-center gap-2">
-                                <span v-if="getDepth(node.path!) > 0" class="text-gray-400 font-black">↳</span>
-                                <span class="font-black text-lg uppercase">{{ node.name }}</span>
-                                <span class="text-[10px] bg-gray-100 px-1 border border-black font-mono">{{ node.path }}</span>
+                            <div :style="{ marginLeft: (getDepth(node.path!) * 2) + 'rem' }" class="flex items-center gap-3">
+                                <span v-if="getDepth(node.path!) > 0" class="text-gray-400 font-black text-2xl">↳</span>
+                                <div>
+                                    <span class="font-black text-xl uppercase tracking-tighter">{{ node.name }}</span>
+                                    <div class="text-[8px] font-black text-gray-400 tracking-widest">{{ node.path }}</div>
+                                </div>
                             </div>
                         </td>
                         <td class="brutalist-td text-center">
-                            <span :class="['brutalist-badge', node.policy?.allow_multiple ? 'bg-blue-400' : 'bg-orange-400']">
+                            <BBadge :class="node.policy?.allow_multiple ? 'bg-blue-400' : 'bg-orange-400'">
                                 {{ node.policy?.allow_multiple ? 'ADDITIV' : 'EKSKLUSIV' }}
-                            </span>
+                            </BBadge>
                         </td>
                         <td class="brutalist-td text-right">
-                            <button @click="deleteOrg(node.id!)" class="brutalist-btn bg-white hover:bg-red-500 hover:text-white px-3 py-1 text-[10px]">SLETT</button>
+                            <BButton @click="deleteOrg(node)" variant="danger" class="text-[10px] py-1 px-4 italic uppercase">
+                                SLETT
+                            </BButton>
                         </td>
                     </tr>
                 </tbody>
             </table>
-        </div>
+            
+            <div v-if="hierarchy.length === 0 && !loading" class="py-20 text-center">
+                <p class="font-black uppercase text-gray-400 italic">Ingen organisasjoner definert i systemet.</p>
+            </div>
+        </BCard>
     </div>
 </template>

@@ -79,6 +79,7 @@ func main() {
 			server.GetReactionsHandler(w, r)
 		}
 	})
+	apiMux.HandleFunc("/admin/pipelines/test", server.TestPipelineHandler)
 	apiMux.HandleFunc("/admin/organs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			server.CreateOrganHandler(w, r)

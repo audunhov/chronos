@@ -43,84 +43,103 @@ type PipelineConfig struct {
 
 type PipelineExecutor struct {
 	// Operations map node types to functions
-	// An operation takes inputs and returns outputs + chosen Port + error
-	Operations map[string]func(inputs map[string]any) (map[string]any, string, error)
+	// An operation takes inputs and returns one or more output maps + chosen Port + error
+	Operations map[string]func(inputs map[string]any) ([]map[string]any, string, error)
 }
 
 func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string]any) error {
-	// results stores the outputs of each node: map[nodeID]map[portName]value
 	results := make(map[string]map[string]any)
 	results["trigger"] = triggerData
 
-	// To handle a DAG correctly, we should ideally use a topological sort.
-	// But since our 'Edges' explicitly define dependencies, we can use a 
-	// simple queue-based walk starting from the trigger.
-	
-	// Track nodes that have been executed
-	executed := make(map[string]bool)
-	
-	// For simplicity in this implementation, we will walk the Nodes array 
-	// but resolve inputs from the Edges mapping.
-	// This requires that the Nodes array is ordered correctly (Topological Sort).
-	// Vue Flow / Frontend should provide them in a reasonable order, 
-	// or we can sort them here.
-	
-	for _, node := range config.Nodes {
-		op, ok := e.Operations[node.Type]
-		if !ok {
-			return fmt.Errorf("unknown operation type: %s", node.Type)
-		}
+	type ExecutionTask struct {
+		NodeID      string
+		InputValues map[string]any
+	}
 
-		// 1. Resolve inputs
+	queue := []ExecutionTask{}
+
+	for _, edge := range config.Edges {
+		if edge.Source == "trigger" {
+			queue = append(queue, ExecutionTask{NodeID: edge.Target, InputValues: triggerData})
+		}
+	}
+
+	maxExecutions := 2000
+	executionCount := 0
+
+	for len(queue) > 0 {
+		if executionCount > maxExecutions {
+			return fmt.Errorf("pipeline exceeded max executions (%d)", maxExecutions)
+		}
+		executionCount++
+
+		task := queue[0]
+		queue = queue[1:]
+
+		var node *PipelineNode
+		for i := range config.Nodes {
+			if config.Nodes[i].ID == task.NodeID {
+				node = &config.Nodes[i]
+				break
+			}
+		}
+		if node == nil { continue }
+
+		op, ok := e.Operations[node.Type]
+		if !ok { return fmt.Errorf("unknown operation: %s", node.Type) }
+
+		// Resolve inputs
 		resolvedInputs := make(map[string]any)
-		
-		// 1a. Start with static values from Inputs
 		for key, input := range node.Inputs {
 			if input.Mode == InputModeStatic {
 				resolvedInputs[key] = input.Value
 			}
 		}
-
-		// 1b. Add values from Data (custom node state) as fallback/direct inputs
 		for key, val := range node.Data {
-			// Only add if not already present from static inputs
 			if _, ok := resolvedInputs[key]; !ok {
 				resolvedInputs[key] = val
 			}
 		}
+		// Special: merge task input values (allows ForEach to pass 'item')
+		for k, v := range task.InputValues {
+			resolvedInputs[k] = v
+		}
 
-		// 1c. Override with connected edge values
 		for _, edge := range config.Edges {
 			if edge.Target == node.ID {
 				sourceResults, ok := results[edge.Source]
-				if !ok {
-					// Source hasn't executed yet. This means the DAG is either 
-					// invalid or out of order.
-					return fmt.Errorf("dependency missing: node %s depends on %s which hasn't executed", node.ID, edge.Source)
-				}
-				
-				val, ok := sourceResults[edge.SourcePort]
 				if ok {
-					resolvedInputs[edge.TargetPort] = val
+					val, ok := sourceResults[edge.SourcePort]
+					if ok { resolvedInputs[edge.TargetPort] = val }
 				}
 			}
 		}
 
-		// 2. Execute operation
-		outputs, chosenPort, err := op(resolvedInputs)
+		// Execute
+		outputList, chosenPort, err := op(resolvedInputs)
 		if err != nil {
+			if err.Error() == "filtered" { continue }
 			return fmt.Errorf("node %s failed: %w", node.ID, err)
 		}
 
-		// 3. Store outputs
-		results[node.ID] = outputs
-		executed[node.ID] = true
-		
-		// 4. Branching Logic: If a node returned a specific Port, 
-		// we should ideally prune the graph.
-		// In a complex DAG, this is done by only queuing children 
-		// connected to 'chosenPort'.
-		_ = chosenPort // Placeholder for future sophisticated pruning
+		// Store last result for referencing
+		if len(outputList) > 0 {
+			results[node.ID] = outputList[len(outputList)-1]
+		}
+
+		// Queue next nodes
+		for _, outputs := range outputList {
+			for _, edge := range config.Edges {
+				if edge.Source == node.ID {
+					if chosenPort == "default" || edge.SourcePort == chosenPort {
+						queue = append(queue, ExecutionTask{
+							NodeID:      edge.Target,
+							InputValues: outputs,
+						})
+					}
+				}
+			}
+		}
 	}
 
 	return nil

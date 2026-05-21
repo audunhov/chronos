@@ -30,11 +30,6 @@ const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, toObject } = u
 const loading = ref(false)
 const reaction = ref<any>(null)
 
-// Support removing edges by clicking them and pressing Backspace/Delete
-const onEdgeClick = (event: any) => {
-    // Vue Flow handles basic selection, we'll implement a delete button or use standard key listener
-}
-
 onConnect((params) => {
     addEdges([params])
 })
@@ -52,7 +47,7 @@ const ACTION_DEFS: Record<string, { inputs: string[], outputs: string[] }> = {
     FindOrg: { inputs: ['start_org_id', 'relation'], outputs: ['org_id', 'name'] },
     FindRole: { inputs: ['target_id', 'role_type'], outputs: ['user_id', 'email', 'name'] },
     SendEmail: { inputs: ['to_email', 'subject', 'body'], outputs: ['success'] },
-    RegisterMember: { inputs: ['org_id', 'name', 'email'], outputs: ['membership_id'] },
+    ForEach: { inputs: ['list'], outputs: ['item'] },
 }
 
 const fetchPipeline = async () => {
@@ -133,7 +128,7 @@ const addLogicNode = (type: 'if' | 'filter' | 'list_filter') => {
         data: { 
             type, 
             operator: '==', 
-            value1: type === 'list_filter' ? 'trigger.list' : '', 
+            value1: '', 
             value2: '',
             inputs: type === 'list_filter' ? ['list', 'operator', 'value'] : ['v1', 'v2', 'operator']
         }
@@ -144,15 +139,35 @@ const addLogicNode = (type: 'if' | 'filter' | 'list_filter') => {
 const save = async () => {
     const flow: any = toObject()
     
-    // Synkroniser trigger-event fra nodedata tilbake til toppnivå reaksjon hvis endret
     const triggerNode = nodes.value.find(n => n.type === 'trigger')
-    const finalTriggerEvent = triggerNode?.data.event || reaction.value?.trigger_event
+    if (triggerNode) {
+        flow.trigger_event = triggerNode.data.event
+    }
 
     try {
         await api.updateReaction(pipelineId, flow)
         alert('Pipeline lagret og publisert!')
     } catch (e: any) {
         alert('Feil ved lagring: ' + e.message)
+    }
+}
+
+const runTest = async () => {
+    const dataStr = prompt('Skriv inn test-data (JSON):', '{"user_id": "123", "email": "test@test.no", "list": [1,2,3]}')
+    if (!dataStr) return
+    
+    try {
+        const triggerData = JSON.parse(dataStr)
+        const res = await api.testPipeline(pipelineId, triggerData)
+        if (res.success) {
+            alert('Test fullført! Sjekk konsollen for logger.')
+        } else {
+            alert('Test feilet: ' + res.error)
+        }
+        console.log('--- PIPELINE TEST LOGS ---')
+        res.logs?.forEach((l: string) => console.log(l))
+    } catch (e: any) {
+        alert('Ugyldig JSON eller systemfeil: ' + e.message)
     }
 }
 
@@ -179,28 +194,28 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-screen w-screen bg-orange-50 flex flex-col overflow-hidden font-mono text-black" @keydown.backspace="deleteSelected" @keydown.delete="deleteSelected" tabindex="0">
+  <div class="fixed inset-0 bg-orange-50 flex flex-col overflow-hidden font-mono text-black" @keydown.backspace="deleteSelected" @keydown.delete="deleteSelected" tabindex="0">
     <!-- Navbar -->
-    <header class="bg-black text-white p-4 flex justify-between items-center border-b-8 border-black z-50">
+    <header class="bg-black text-white p-4 flex justify-between items-center border-b-8 border-black z-50 shrink-0">
         <div class="flex items-center gap-6">
             <BButton @click="router.back()" variant="ghost" class="text-white border-white text-xs py-1 hover:bg-white hover:text-black transition-colors italic">← TILBAKE</BButton>
             <div class="h-8 w-2 bg-yellow-400"></div>
             <h1 class="text-3xl font-black uppercase italic tracking-tighter leading-none">Visual Pipeline Builder</h1>
         </div>
         <div class="flex gap-4">
+            <BButton @click="runTest" variant="secondary" class="text-xs py-2 px-6">TEST KJØRING</BButton>
             <BButton @click="save" variant="primary" class="text-xs py-2 px-10 shadow-[4px_4px_0px_0px_white]">PUBLISER ENDRINGER</BButton>
         </div>
     </header>
 
-    <div class="flex-1 flex overflow-hidden">
+    <div class="flex-1 flex overflow-hidden min-h-0">
         <!-- Sidebar -->
-        <aside class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)]">
+        <aside class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)] shrink-0">
             <section class="space-y-4">
                 <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Logikk</h4>
                 <div class="grid grid-cols-2 gap-2">
-                    <button @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 uppercase font-black italic">IF / THEN</button>
-                    <button @click="addLogicNode('filter')" class="brutalist-btn bg-orange-100 text-[10px] p-2 hover:bg-orange-200 uppercase font-black italic">FILTER (STOP)</button>
-                    <button @click="addLogicNode('list_filter')" class="brutalist-btn bg-blue-100 text-[10px] p-2 hover:bg-blue-200 col-span-2 uppercase font-black italic">FILTER (LIST)</button>
+                    <button @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 font-black italic">IF / THEN</button>
+                    <button @click="addLogicNode('list_filter')" class="brutalist-btn bg-blue-100 text-[10px] p-2 hover:bg-blue-200 font-black italic">FILTER (LIST)</button>
                 </div>
             </section>
 
@@ -209,7 +224,7 @@ onMounted(async () => {
                 <div class="space-y-2">
                     <button v-for="type in Object.keys(ACTION_DEFS)" :key="type" 
                         @click="addActionNode(type)"
-                        class="brutalist-btn w-full bg-white text-left text-[10px] p-2 hover:bg-blue-50"
+                        class="brutalist-btn w-full bg-white text-left text-[10px] p-2 hover:bg-blue-50 font-black italic"
                     >
                         + {{ type }}
                     </button>
@@ -218,17 +233,17 @@ onMounted(async () => {
 
             <div class="brutalist-card bg-black text-white p-4 !shadow-none italic text-[8px] leading-relaxed">
                 STATUS: Markér en kobling og trykk [Backspace] for å slette. <br><br>
-                TIPS: IF-noden kan referere variabler ved å skrive f.eks. 'trigger.user_id' i verdi-feltet.
+                TIPS: IF-noden kan referere variabler ved å skrive f.eks. 'trigger.user_id' i verdi-feltet. <br><br>
+                NYTT: TEST KJØRING lar deg se resultatet uten å endre data permanent.
             </div>
         </aside>
 
         <!-- Canvas -->
-        <main class="flex-1 relative bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:20px_20px]">
+        <main class="flex-1 relative overflow-hidden min-w-0">
             <VueFlow 
                 v-model:nodes="nodes" 
                 v-model:edges="edges" 
                 :node-types="nodeTypes"
-                @edge-click="onEdgeClick"
                 fit-view-on-init
                 class="brutalist-flow"
             >

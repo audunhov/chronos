@@ -223,6 +223,38 @@ export const updateReaction = (
     {}
   >({ url: "/api/admin/reactions", method: "put", ...variables, signal });
 
+export type TestPipelineError = Fetcher.ErrorWrapper<undefined>;
+
+export type TestPipelineResponse = {
+  success?: boolean;
+  error?: string;
+  logs?: string[];
+};
+
+export type TestPipelineRequestBody = {
+  pipeline_id: string;
+  trigger_data: {
+    [key: string]: any;
+  };
+};
+
+export type TestPipelineVariables = {
+  body: TestPipelineRequestBody;
+};
+
+export const testPipeline = (
+  variables: TestPipelineVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    TestPipelineResponse,
+    TestPipelineError,
+    TestPipelineRequestBody,
+    {},
+    {},
+    {}
+  >({ url: "/api/admin/pipelines/test", method: "post", ...variables, signal });
+
 export type GetOrgansQueryParams = {
   org_id: string;
 };

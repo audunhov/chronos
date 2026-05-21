@@ -219,6 +219,44 @@ paths:
         '200':
           description: Reaction updated
 
+  /api/admin/pipelines/test:
+    post:
+      operationId: testPipeline
+      summary: Test a pipeline configuration (Admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pipeline_id
+                - trigger_data
+              properties:
+                pipeline_id:
+                  type: string
+                trigger_data:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Test execution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  logs:
+                    type: array
+                    items:
+                      type: string
+
   /api/admin/organs:
     get:
       operationId: getOrgans

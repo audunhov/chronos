@@ -1195,6 +1195,63 @@ func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(report)
 }
 
+func (s *Server) TestPipelineHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PipelineID  string         `json:"pipeline_id"`
+		TriggerData map[string]any `json:"trigger_data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Fetch the pipeline config
+	var configJSON []byte
+	err := s.db.QueryRowContext(r.Context(), "SELECT config FROM event_reactions WHERE id = $1", req.PipelineID).Scan(&configJSON)
+	if err != nil {
+		http.Error(w, "Pipeline not found", http.StatusNotFound)
+		return
+	}
+
+	var dag domain.PipelineConfig
+	if err := json.Unmarshal(configJSON, &dag); err != nil {
+		http.Error(w, "Invalid config", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Start Transaction
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback() // Always rollback test runs
+
+	// 3. Setup Test Executor
+	worker := storage.NewReactionWorker(s.db) // Just for the operations
+	executor := &domain.PipelineExecutor{
+		Operations: worker.GetOperations(tx),
+	}
+
+	// 4. Run
+	err = executor.Execute(dag, req.TriggerData)
+	
+	res := struct {
+		Success bool     `json:"success"`
+		Error   string   `json:"error,omitempty"`
+		Logs    []string `json:"logs"`
+	}{
+		Success: err == nil,
+		Logs:    []string{"Test run started", "Rolling back changes..."},
+	}
+	if err != nil {
+		res.Error = err.Error()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
 func (s *Server) UpdateReactionHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID     string         `json:"id"`

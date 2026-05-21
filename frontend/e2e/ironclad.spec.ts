@@ -4,14 +4,17 @@ test.describe('Ironclad Business Flows', () => {
 
   test('Admin: Organization and Member Management', async ({ page }) => {
     await page.goto('/');
-    await page.getByPlaceholder('DIN@EPOST.NO').fill('audun@su.no');
-    await page.getByPlaceholder('********').fill('password123');
+    await page.getByPlaceholder('DIN@EPOST.NO').fill('admin@chronos.no');
+    await page.getByPlaceholder('********').fill('admin123');
     await page.getByRole('button', { name: 'LOGG INN' }).click();
+
+    await expect(page.getByRole('heading', { name: 'CHRONOS' })).toBeVisible();
 
     // 1. Verify Structure
     await page.getByRole('button', { name: 'ADMIN' }).click();
+
     await page.getByRole('button', { name: 'STRUKTUR' }).click();
-    await expect(page.getByText('Norges Spillforbund')).toBeVisible();
+    await expect(page.getByText('Norges Spillforbund').first()).toBeVisible();
 
     // 2. Verify Stats
     await page.getByRole('button', { name: 'STATISTIKK' }).click();

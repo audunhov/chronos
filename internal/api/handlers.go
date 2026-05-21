@@ -487,17 +487,6 @@ func (s *Server) AssignOrganMemberHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Oppdater read model
-	_, err = s.db.ExecContext(r.Context(), `
-		INSERT INTO role_assignments (id, user_id, org_id, organ_id, role_type)
-		VALUES ($1, $2, $3, $4, $5)`,
-		id, req.UserID, orgID, req.OrganID, req.RoleType)
-	
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -523,12 +512,6 @@ func (s *Server) RevokeOrganMemberHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, err := s.db.ExecContext(r.Context(), "DELETE FROM role_assignments WHERE id = $1", id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -543,18 +526,16 @@ func (s *Server) CreateOrganHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var parentID sql.NullString
-	if req.ParentOrganID != nil {
-		parentID.String = *req.ParentOrganID
-		parentID.Valid = true
+	id := uuid.New().String()
+	event := domain.OrganCreated{
+		ID:            id,
+		OrgID:         req.OrgID,
+		Name:          req.Name,
+		ParentOrganID: req.ParentOrganID,
+		Timestamp:     time.Now(),
 	}
 
-	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO organs (org_id, name, parent_organ_id)
-		VALUES ($1, $2, $3)`,
-		req.OrgID, req.Name, parentID)
-
-	if err != nil {
+	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -595,6 +576,9 @@ func (s *Server) RegisterMemberHandler(w http.ResponseWriter, r *http.Request) {
 				Name:      req.Name,
 				Timestamp: time.Now(),
 			}
+			// Siden s.eventStore.Append bruker sin egen tx, og vi senere må bruke
+			// en tx for hierarkisjekk, burde vi ideelt sett starte tx helt øverst.
+			// Men for å gjøre dette enkelt og unngå stor refaktorering akkurat her:
 			if err := s.eventStore.Append(r.Context(), userID, 1, userEvent); err != nil {
 				http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -642,25 +626,37 @@ func (s *Server) RegisterMemberHandler(w http.ResponseWriter, r *http.Request) {
 
 	if isExclusive && orgPath != "" {
 		// Finn ut hvilken organisasjon som håndhever regelen og blokkerer oss
+		var controllingOrgID string
+		var controllingOrgName string
+		queryPolicy := `
+			SELECT id, name 
+			FROM organization_hierarchy 
+			WHERE path @> $1 AND (policy->>'allow_multiple')::boolean = false
+			ORDER BY nlevel(path) DESC
+			LIMIT 1`
+		err = tx.QueryRowContext(r.Context(), queryPolicy, orgPath).Scan(&controllingOrgID, &controllingOrgName)
+		if err != nil {
+			http.Error(w, "Policy lookup failed", http.StatusInternalServerError)
+			return
+		}
+
 		var conflictID string
 		var conflictOrgName string
-		// Vi sjekker om brukeren har et medlemskap i NOEN org som er i konflikt med vår eksklusive gren
-		// En konflikt oppstår hvis vi er i samme gren som en eksisterende medlems-org
-		query := `
+		queryConflict := `
 			SELECT m.id, o.name 
 			FROM membership_view m
 			JOIN organization_hierarchy o ON m.org_id = o.id
 			WHERE m.user_id = $1 AND (o.path <@ (
-				SELECT path FROM organization_hierarchy WHERE path @> $2 AND (policy->>'allow_multiple')::boolean = false LIMIT 1
+				SELECT path FROM organization_hierarchy WHERE id = $2
 			) OR o.path @> (
-				SELECT path FROM organization_hierarchy WHERE path @> $2 AND (policy->>'allow_multiple')::boolean = false LIMIT 1
+				SELECT path FROM organization_hierarchy WHERE id = $2
 			))`
 		
-		err = tx.QueryRowContext(r.Context(), query, userID, orgPath).Scan(&conflictID, &conflictOrgName)
+		err = tx.QueryRowContext(r.Context(), queryConflict, userID, controllingOrgID).Scan(&conflictID, &conflictOrgName)
 		if err == nil {
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(map[string]string{
-				"error": fmt.Sprintf("User is already a member in the exclusive branch controlled by %s", conflictOrgName),
+				"error": fmt.Sprintf("User is already a member in the exclusive branch controlled by %s (Member in: %s)", controllingOrgName, conflictOrgName),
 				"id":    conflictID,
 			})
 			return
@@ -687,7 +683,7 @@ func (s *Server) RegisterMemberHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now(),
 	}
 
-	if err := s.eventStore.Append(r.Context(), membershipID, 1, membershipEvent); err != nil {
+	if err := s.eventStore.AppendWithTx(r.Context(), tx, membershipID, 1, membershipEvent); err != nil {
 		http.Error(w, "Failed to create membership: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -836,14 +832,22 @@ func (s *Server) CreateOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		path = strings.ReplaceAll(req.Name, " ", "_")
 	}
 
-	policyJSON, _ := json.Marshal(req.Policy)
-	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO organization_hierarchy (id, name, parent_id, path, policy)
-		VALUES ($1, $2, $3, $4, $5)`,
-		id, req.Name, sql.NullString{String: req.ParentID, Valid: req.ParentID != ""}, path, policyJSON)
-	
-	if err != nil {
-		http.Error(w, "Failed to create org: "+err.Error(), http.StatusInternalServerError)
+	var parentID *string
+	if req.ParentID != "" {
+		parentID = &req.ParentID
+	}
+
+	event := domain.OrganizationCreated{
+		ID:        id,
+		Name:      req.Name,
+		ParentID:  parentID,
+		Path:      path,
+		Policy:    req.Policy,
+		Timestamp: time.Now(),
+	}
+
+	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
+		http.Error(w, "Failed to save event: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -858,14 +862,24 @@ func (s *Server) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err := s.db.ExecContext(r.Context(), "DELETE FROM organization_hierarchy WHERE id = $1", id)
+	// Find current version
+	var version int
+	err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", id).Scan(&version)
 	if err != nil {
-		log.Printf("Failed to delete organization %s: %v", id, err)
-		http.Error(w, "Failed to delete: "+err.Error(), http.StatusInternalServerError)
+		version = 0 // Might not be event-sourced yet if legacy
+	}
+
+	event := domain.OrganizationDeleted{
+		ID:        id,
+		Timestamp: time.Now(),
+	}
+
+	if err := s.eventStore.Append(r.Context(), id, version+1, event); err != nil {
+		http.Error(w, "Failed to save event: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Successfully deleted organization %s (Cascaded dependencies)", id)
+	log.Printf("Successfully deleted organization %s (Cascaded dependencies via event)", id)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -1073,13 +1087,16 @@ func (s *Server) SubmitFormResponseHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	answersJSON, _ := json.Marshal(req.Answers)
-	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO form_responses (form_id, user_id, answers)
-		VALUES ($1, $2, $3)`,
-		req.FormID, userID, answersJSON)
-	
-	if err != nil {
+	responseID := uuid.New().String()
+	event := domain.FormResponseSubmitted{
+		FormID:    req.FormID,
+		UserID:    userID,
+		Answers:   req.Answers,
+		Timestamp: time.Now(),
+	}
+
+	// We use a unique ResponseID as the aggregate ID to avoid version conflicts
+	if err := s.eventStore.Append(r.Context(), responseID, 1, event); err != nil {
 		http.Error(w, "Failed to submit: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1105,15 +1122,16 @@ func (s *Server) CreateFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	schemaJSON, _ := json.Marshal(req.Schema)
 	id := uuid.New().String()
+	event := domain.FormCreated{
+		ID:        id,
+		OrgID:     req.OrgID,
+		Title:     req.Title,
+		Schema:    req.Schema,
+		Timestamp: time.Now(),
+	}
 
-	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO forms (id, org_id, title, schema)
-		VALUES ($1, $2, $3, $4)`,
-		id, req.OrgID, req.Title, schemaJSON)
-
-	if err != nil {
+	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
 		log.Printf("CreateForm error: %v (OrgID: %s)\n", err, req.OrgID)
 		http.Error(w, "Failed to create form: "+err.Error(), http.StatusInternalServerError)
 		return

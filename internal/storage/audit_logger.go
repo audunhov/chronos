@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"log"
 	"register/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 type AuditLogger struct {
@@ -18,6 +20,9 @@ func NewAuditLogger(db *sql.DB) *AuditLogger {
 
 func (l *AuditLogger) Log(ctx context.Context, action string, targetID string, detail any) {
 	correlationID, _ := ctx.Value(domain.CorrelationIDKey).(string)
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
 	actorID, _ := ctx.Value(domain.UserIDKey).(string)
 	orgID, _ := ctx.Value(domain.OrgIDKey).(string)
 	ip, _ := ctx.Value(domain.IPAddressKey).(string)

@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Medlemsregister E2E', () => {
-  const adminEmail = 'audun@su.no'
-  const adminPassword = 'password123'
+  const adminEmail = 'admin@chronos.no'
+  const adminPassword = 'admin123'
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
@@ -10,7 +10,7 @@ test.describe('Medlemsregister E2E', () => {
     await page.getByPlaceholder('********').fill(adminPassword)
     await page.getByRole('button', { name: 'LOGG INN' }).click()
 
-    await expect(page.getByText('CHRONOS')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'CHRONOS' })).toBeVisible()
   });
 
   test('skal kunne se medlemslisten', async ({ page }) => {

@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Forms Management E2E', () => {
-  const adminEmail = 'audun@su.no'
-  const adminPassword = 'password123'
+  const adminEmail = 'admin@chronos.no'
+  const adminPassword = 'admin123'
 
   test.beforeEach(async ({ page }) => {
     // Logg inn som admin
@@ -10,7 +10,7 @@ test.describe('Forms Management E2E', () => {
     await page.getByPlaceholder('DIN@EPOST.NO').fill(adminEmail)
     await page.getByPlaceholder('********').fill(adminPassword)
     await page.getByRole('button', { name: 'LOGG INN' }).click()
-    await expect(page.getByText('CHRONOS')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'CHRONOS' })).toBeVisible()
   })
 
   test('skal kunne opprette et nytt skjema og svare på det', async ({ page }) => {

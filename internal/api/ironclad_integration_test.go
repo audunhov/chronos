@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"register/internal/storage"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -34,15 +35,17 @@ func TestIroncladIntegration_HierarchicalGatekeeper(t *testing.T) {
 	childA_ID := uuid.New().String()
 	childB_ID := uuid.New().String()
 
+	testPrefix := "EXCL_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+
 	// Parent org (Exclusive)
 	_, _ = db.ExecContext(ctx, "INSERT INTO organization_hierarchy (id, name, path, policy) VALUES ($1, $2, $3, $4)",
-		exclusiveParentID, "Exclusive Federation", "EXCL", `{"allow_multiple": false}`)
+		exclusiveParentID, "Exclusive Federation", testPrefix, `{"allow_multiple": false}`)
 	
 	// Children (Default to Additive, but parent is Exclusive)
 	_, _ = db.ExecContext(ctx, "INSERT INTO organization_hierarchy (id, name, parent_id, path, policy) VALUES ($1, $2, $3, $4, $5)",
-		childA_ID, "Local A", exclusiveParentID, "EXCL.A", `{"allow_multiple": true}`)
+		childA_ID, "Local A", exclusiveParentID, testPrefix+".A", `{"allow_multiple": true}`)
 	_, _ = db.ExecContext(ctx, "INSERT INTO organization_hierarchy (id, name, parent_id, path, policy) VALUES ($1, $2, $3, $4, $5)",
-		childB_ID, "Local B", exclusiveParentID, "EXCL.B", `{"allow_multiple": true}`)
+		childB_ID, "Local B", exclusiveParentID, testPrefix+".B", `{"allow_multiple": true}`)
 
 	email := fmt.Sprintf("test-%s@gatekeeper.no", uuid.New().String())
 

@@ -4,8 +4,8 @@ import { test, expect } from '@playwright/test'
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe('Autentisering E2E', () => {
-  const adminEmail = 'audun@su.no'
-  const adminPassword = 'password123'
+  const adminEmail = 'admin@chronos.no'
+  const adminPassword = 'admin123'
 
   test('skal kunne logge inn som admin', async ({ page }) => {
     await page.goto('/')
@@ -13,7 +13,7 @@ test.describe('Autentisering E2E', () => {
     await page.getByPlaceholder('********').fill(adminPassword)
     await page.getByRole('button', { name: 'LOGG INN' }).click()
 
-    await expect(page.getByText('CHRONOS')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'CHRONOS' })).toBeVisible()
     await expect(page.getByText(`IDENT: ${adminEmail}`)).toBeVisible()
   })
 

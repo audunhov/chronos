@@ -64,7 +64,7 @@ func (s *EventStore) AppendWithTx(ctx context.Context, tx *sql.Tx, aggregateID s
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO event_store (aggregate_id, version, event_type, payload, created_at, correlation_id)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
-		aggregateID, version, event.EventType(), payload, now, correlationID)
+		aggregateID, version, event.EventType(), payload, now, sql.NullString{String: correlationID, Valid: correlationID != ""})
 	if err != nil {
 		return err
 	}
@@ -157,10 +157,69 @@ func (s *EventStore) projectSynchronously(ctx context.Context, tx *sql.Tx, aggre
 		return err
 
 	case domain.RoleAssigned:
+		// Sjekk om det er en Organ-rolle eller Organisasjons-rolle
+		var query string
+		if e.OrganID != nil && *e.OrganID != "" {
+			query = `
+				INSERT INTO role_assignments (id, user_id, org_id, organ_id, role_type, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6)`
+			_, err := tx.ExecContext(ctx, query, e.ID, e.UserID, e.OrgID, *e.OrganID, e.RoleType, now)
+			return err
+		} else {
+			query = `
+				INSERT INTO role_assignments (id, user_id, org_id, role_type, created_at)
+				VALUES ($1, $2, $3, $4, $5)`
+			_, err := tx.ExecContext(ctx, query, e.ID, e.UserID, e.OrgID, e.RoleType, now)
+			return err
+		}
+
+	case domain.RoleRevoked:
+		_, err := tx.ExecContext(ctx, "DELETE FROM role_assignments WHERE id = $1", aggregateID)
+		return err
+
+	case domain.OrganizationCreated:
+		policyJSON, _ := json.Marshal(e.Policy)
+		var parentID sql.NullString
+		if e.ParentID != nil && *e.ParentID != "" {
+			parentID.String = *e.ParentID
+			parentID.Valid = true
+		}
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO role_assignments (id, user_id, org_id, role_type, created_at)
+			INSERT INTO organization_hierarchy (id, name, parent_id, path, policy, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)`,
+			e.ID, e.Name, parentID, e.Path, policyJSON, now)
+		return err
+
+	case domain.OrganizationDeleted:
+		_, err := tx.ExecContext(ctx, "DELETE FROM organization_hierarchy WHERE id = $1", aggregateID)
+		return err
+
+	case domain.OrganCreated:
+		var parentID sql.NullString
+		if e.ParentOrganID != nil && *e.ParentOrganID != "" {
+			parentID.String = *e.ParentOrganID
+			parentID.Valid = true
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO organs (id, org_id, name, parent_organ_id, created_at)
 			VALUES ($1, $2, $3, $4, $5)`,
-			e.ID, e.UserID, e.OrgID, e.RoleType, now)
+			e.ID, e.OrgID, e.Name, parentID, now)
+		return err
+
+	case domain.FormCreated:
+		schemaJSON, _ := json.Marshal(e.Schema)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO forms (id, org_id, title, schema, created_at)
+			VALUES ($1, $2, $3, $4, $5)`,
+			e.ID, e.OrgID, e.Title, schemaJSON, now)
+		return err
+
+	case domain.FormResponseSubmitted:
+		answersJSON, _ := json.Marshal(e.Answers)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO form_responses (form_id, user_id, answers, created_at)
+			VALUES ($1, $2, $3, $4)`,
+			e.FormID, e.UserID, answersJSON, now)
 		return err
 	}
 

@@ -188,6 +188,29 @@ paths:
       responses:
         '201':
           description: Reaction created
+    put:
+      operationId: updateReaction
+      summary: Update an event reaction configuration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+                - config
+              properties:
+                id:
+                  type: string
+                config:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Reaction updated
 
   /api/admin/organs:
     get:

@@ -61,6 +61,7 @@ export const api = {
     getReactions: (orgId: string, triggerAggregateId?: string) => 
         chronos.getReactions({ queryParams: { org_id: orgId, trigger_aggregate_id: triggerAggregateId } }),
     createReaction: (data: any) => chronos.createReaction({ body: data }),
+    updateReaction: (id: string, config: any) => chronos.updateReaction({ body: { id, config } }),
 
 
     // Organs

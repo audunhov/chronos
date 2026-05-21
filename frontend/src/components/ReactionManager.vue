@@ -363,7 +363,12 @@ onMounted(() => {
                             ID-FILTER: {{ r.trigger_aggregate_id }}
                         </div>
                     </div>
-                    <BBadge class="bg-black text-white px-4">{{ r.action_type }}</BBadge>
+                    <div class="flex gap-4 items-center">
+                        <router-link :to="'/admin/pipelines/edit/' + r.id">
+                            <BButton variant="primary" class="text-[10px] py-1 px-4 italic font-black underline">ÅPNE VISUELL EDITOR</BButton>
+                        </router-link>
+                        <BBadge class="bg-black text-white px-4">{{ r.action_type }}</BBadge>
+                    </div>
                 </div>
                 
                 <div v-if="r.action_type === 'PIPELINE_DAG'" class="space-y-2 ml-4 border-l-4 border-black pl-4">

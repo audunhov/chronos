@@ -7,6 +7,7 @@ import TreasuryView from '../views/TreasuryView.vue'
 import SurveysView from '../views/SurveysView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import UserInspectorView from '../views/UserInspectorView.vue'
+import PipelineEditorView from '../views/PipelineEditorView.vue'
 
 // Import components directly for other tabs to keep it simple
 import OrgManager from '../components/OrgManager.vue'
@@ -33,6 +34,11 @@ const router = createRouter({
       path: '/profile',
       name: 'profile',
       component: ProfileView,
+    },
+    {
+      path: '/admin/pipelines/edit/:id',
+      name: 'pipeline-editor',
+      component: PipelineEditorView,
     },
     {
       path: '/admin',

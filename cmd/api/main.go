@@ -68,6 +68,8 @@ func main() {
 	apiMux.HandleFunc("/admin/reactions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			server.CreateReactionHandler(w, r)
+		} else if r.Method == http.MethodPut {
+			server.UpdateReactionHandler(w, r)
 		} else {
 			server.GetReactionsHandler(w, r)
 		}

@@ -193,6 +193,32 @@ export const createReaction = (
     {}
   >({ url: "/api/admin/reactions", method: "post", ...variables, signal });
 
+export type UpdateReactionError = Fetcher.ErrorWrapper<undefined>;
+
+export type UpdateReactionRequestBody = {
+  id: string;
+  config: {
+    [key: string]: any;
+  };
+};
+
+export type UpdateReactionVariables = {
+  body: UpdateReactionRequestBody;
+};
+
+export const updateReaction = (
+  variables: UpdateReactionVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    UpdateReactionError,
+    UpdateReactionRequestBody,
+    {},
+    {},
+    {}
+  >({ url: "/api/admin/reactions", method: "put", ...variables, signal });
+
 export type GetOrgansQueryParams = {
   org_id: string;
 };

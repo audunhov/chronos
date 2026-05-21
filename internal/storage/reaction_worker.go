@@ -18,12 +18,16 @@ type ReactionWorker struct {
 func NewReactionWorker(db *sql.DB) *ReactionWorker {
 	w := &ReactionWorker{db: db}
 	w.executor = &domain.PipelineExecutor{
-		Operations: map[string]func(inputs map[string]any) (map[string]any, error){
-			"FindOrg":   w.opFindOrg,
-			"FindOrgan": w.opFindOrgan,
-			"FindRole":  w.opFindRole,
-			"Template":  w.opTemplate,
-			"SendEmail": w.opSendEmail,
+		Operations: map[string]func(inputs map[string]any) (map[string]any, string, error){
+			"FindOrg":        w.opFindOrg,
+			"FindOrgan":      w.opFindOrgan,
+			"FindRole":       w.opFindRole,
+			"Template":       w.opTemplate,
+			"SendEmail":      w.opSendEmail,
+			"IfThen":         w.opIfThen,
+			"Filter":         w.opFilter,
+			"RegisterMember": w.opRegisterMember,
+			"CreateForm":     w.opCreateForm,
 		},
 	}
 	return w
@@ -31,11 +35,33 @@ func NewReactionWorker(db *sql.DB) *ReactionWorker {
 
 // --- Production Operations ---
 
-func (w *ReactionWorker) opFindOrg(inputs map[string]any) (map[string]any, error) {
+func (w *ReactionWorker) opIfThen(inputs map[string]any) (map[string]any, string, error) {
+	v1 := inputs["value1"]
+	v2 := inputs["value2"]
+	op, _ := inputs["operator"].(string)
+
+	if domain.EvaluateCondition(v1, op, v2) {
+		return nil, "true", nil
+	}
+	return nil, "false", nil
+}
+
+func (w *ReactionWorker) opFilter(inputs map[string]any) (map[string]any, string, error) {
+	v1 := inputs["value1"]
+	v2 := inputs["value2"]
+	op, _ := inputs["operator"].(string)
+
+	if domain.EvaluateCondition(v1, op, v2) {
+		return nil, "default", nil
+	}
+	return nil, "default", fmt.Errorf("filtered")
+}
+
+func (w *ReactionWorker) opFindOrg(inputs map[string]any) (map[string]any, string, error) {
 	startID, _ := inputs["start_org_id"].(string)
 	relation, _ := inputs["relation"].(string)
 	
-	if startID == "" { return nil, fmt.Errorf("missing start_org_id") }
+	if startID == "" { return nil, "", fmt.Errorf("missing start_org_id") }
 
 	var query string
 	if relation == "parent" {
@@ -47,7 +73,7 @@ func (w *ReactionWorker) opFindOrg(inputs map[string]any) (map[string]any, error
 	var id, name string
 	var parentID sql.NullString
 	err := w.db.QueryRow(query, startID).Scan(&parentID, &name)
-	if err != nil { return nil, err }
+	if err != nil { return nil, "", err }
 	
 	if relation == "parent" && parentID.Valid {
 		id = parentID.String
@@ -57,21 +83,21 @@ func (w *ReactionWorker) opFindOrg(inputs map[string]any) (map[string]any, error
 		id = startID
 	}
 
-	return map[string]any{"org_id": id, "name": name}, nil
+	return map[string]any{"org_id": id, "name": name}, "default", nil
 }
 
-func (w *ReactionWorker) opFindOrgan(inputs map[string]any) (map[string]any, error) {
+func (w *ReactionWorker) opFindOrgan(inputs map[string]any) (map[string]any, string, error) {
 	orgID, _ := inputs["org_id"].(string)
 	name, _ := inputs["organ_name"].(string)
 	
 	var id string
 	err := w.db.QueryRow("SELECT id FROM organs WHERE org_id = $1 AND name = $2", orgID, name).Scan(&id)
-	if err != nil { return nil, err }
+	if err != nil { return nil, "", err }
 
-	return map[string]any{"organ_id": id}, nil
+	return map[string]any{"organ_id": id}, "default", nil
 }
 
-func (w *ReactionWorker) opFindRole(inputs map[string]any) (map[string]any, error) {
+func (w *ReactionWorker) opFindRole(inputs map[string]any) (map[string]any, string, error) {
 	targetID, _ := inputs["target_id"].(string)
 	roleType, _ := inputs["role_type"].(string)
 
@@ -84,35 +110,44 @@ func (w *ReactionWorker) opFindRole(inputs map[string]any) (map[string]any, erro
 	
 	var userID, email, name string
 	err := w.db.QueryRow(query, targetID, roleType).Scan(&userID, &email, &name)
-	if err != nil { return nil, err }
+	if err != nil { return nil, "", err }
 
-	return map[string]any{"user_id": userID, "email": email, "name": name}, nil
+	return map[string]any{"user_id": userID, "email": email, "name": name}, "default", nil
 }
 
-func (w *ReactionWorker) opTemplate(inputs map[string]any) (map[string]any, error) {
-	// Forenklet template-logikk
+func (w *ReactionWorker) opTemplate(inputs map[string]any) (map[string]any, string, error) {
 	tmplName, _ := inputs["template_name"].(string)
 	userName, _ := inputs["user_name"].(string)
 	
 	return map[string]any{
 		"subject": "Varsel fra Chronos: " + tmplName,
 		"body":    fmt.Sprintf("Hei, dette er et automatisk varsel angående %s.", userName),
-	}, nil
+	}, "default", nil
 }
 
-func (w *ReactionWorker) opSendEmail(inputs map[string]any) (map[string]any, error) {
+func (w *ReactionWorker) opSendEmail(inputs map[string]any) (map[string]any, string, error) {
 	to, _ := inputs["to_email"].(string)
 	subject, _ := inputs["subject"].(string)
 	body, _ := inputs["body"].(string)
 
-	if to == "" { return nil, fmt.Errorf("missing recipient") }
+	if to == "" { return nil, "", fmt.Errorf("missing recipient") }
 
 	_, err := w.db.Exec(`
 		INSERT INTO email_outbox (recipient_email, subject, body_html) 
 		VALUES ($1, $2, $3)`,
 		to, subject, body)
 	
-	return map[string]any{"success": err == nil}, err
+	return map[string]any{"success": err == nil}, "default", err
+}
+
+func (w *ReactionWorker) opRegisterMember(inputs map[string]any) (map[string]any, string, error) {
+	// Merk: Her kaller vi domenelaget direkte for å bevare determinisme
+	// I en ekte app ville vi kanskje ha sendt en kommando over bussen
+	return nil, "default", fmt.Errorf("RegisterMember node not yet implemented in worker")
+}
+
+func (w *ReactionWorker) opCreateForm(inputs map[string]any) (map[string]any, string, error) {
+	return nil, "default", fmt.Errorf("CreateForm node not yet implemented in worker")
 }
 
 // --- Worker Loop ---

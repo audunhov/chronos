@@ -1191,6 +1191,29 @@ func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(report)
 }
 
+func (s *Server) UpdateReactionHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID     string         `json:"id"`
+		Config map[string]any `json:"config"`
+	}
+	if (err := json.NewDecoder(r.Body).Decode(&req)); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	configJSON, _ := json.Marshal(req.Config)
+	_, err := s.db.ExecContext(r.Context(), `
+		UPDATE event_reactions SET config = $1 WHERE id = $2`,
+		configJSON, req.ID)
+	
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
 	query := `
 		WITH months AS (

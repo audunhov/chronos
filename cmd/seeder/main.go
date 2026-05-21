@@ -24,12 +24,23 @@ func main() {
 	es := storage.NewEventStore(db)
 	ctx := context.Background()
 
-	log.Println("Bootstrapping system...")
+	log.Println("Wiping existing data for reset...")
+	tables := []string{
+		"form_responses", "forms", "email_outbox", "email_templates",
+		"role_assignments", "organs", "membership_view", "event_store",
+		"users", "organization_hierarchy",
+	}
+	for _, table := range tables {
+		_, err := db.ExecContext(ctx, "TRUNCATE TABLE "+table+" CASCADE")
+		if err != nil {
+			log.Printf("Warning: failed to truncate %s: %v", table, err)
+		}
+	}
 
 	// 1. Create Hierarchy with Static UUIDs for Idempotency
 	nationalID := "00000000-0000-0000-0000-000000000001"
-	regionID   := "00000000-0000-0000-0000-000000000002"
-	localID    := "00000000-0000-0000-0000-000000000003"
+	regionID := "00000000-0000-0000-0000-000000000002"
+	localID := "00000000-0000-0000-0000-000000000003"
 
 	orgs := []struct {
 		id       string
@@ -72,6 +83,7 @@ func main() {
 		
 		// Update role and org for admin
 		_, _ = db.ExecContext(ctx, "UPDATE users SET role = 'admin', org_id = $1 WHERE id = $2", nationalID, adminID)
+		_, _ = db.ExecContext(ctx, "INSERT INTO role_assignments (user_id, org_id, role_type) VALUES ($1, $2, 'admin')", adminID, nationalID)
 		log.Println("Created admin user (admin@chronos.no / admin123)")
 	} else {
 		log.Println("Admin user already exists")

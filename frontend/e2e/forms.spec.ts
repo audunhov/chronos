@@ -44,7 +44,7 @@ test.describe('Forms Management E2E', () => {
     await expect(page.getByRole('heading', { name: testFormTitle })).toBeVisible()
 
     // 3. Svar på skjemaet (Mine sider -> Undersøkelser)
-    await page.getByRole('button', { name: 'MINE SIDER' }).click()
+    await page.getByRole('button', { name: 'DASHBOARD' }).click()
     await page.getByRole('button', { name: 'UNDERSØKELSER' }).click()
     
     await page.getByRole('button', { name: 'SVAR PÅ SKJEMA' }).last().click()

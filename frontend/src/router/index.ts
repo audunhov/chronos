@@ -53,11 +53,9 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to) => {
   if (to.path.startsWith('/admin') && auth.user?.role !== 'admin') {
-    next('/')
-  } else {
-    next()
+    return '/'
   }
 })
 

@@ -2,6 +2,10 @@
 import { useRoute } from 'vue-router'
 import BButton from '../components/base/BButton.vue'
 
+const props = defineProps<{
+    orgs: { id: string, name: string }[]
+}>()
+
 const route = useRoute()
 </script>
 
@@ -84,6 +88,6 @@ const route = useRoute()
         </nav>
     </div>
 
-    <router-view />
+    <router-view :orgs="props.orgs" />
   </div>
 </template>

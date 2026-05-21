@@ -120,7 +120,7 @@ onMounted(() => {
       </div>
 
       <!-- MAIN CONTENT -->
-      <router-view @open-register="showModal = true" />
+      <router-view :orgs="organizations" @open-register="showModal = true" />
     </div>
 
     <!-- Global Register Modal -->

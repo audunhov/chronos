@@ -18,7 +18,7 @@ test.describe('Ironclad Business Flows', () => {
 
     // 2. Verify Stats
     await page.getByRole('button', { name: 'STATISTIKK' }).click();
-    await expect(page.getByText('Statistikk & Vekst')).toBeVisible();
+    await expect(page.getByText('System Analytics')).toBeVisible();
     
     // 3. Verify Treasury
     await page.getByRole('button', { name: 'FINANS' }).click();

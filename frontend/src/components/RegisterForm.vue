@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { api } from '../services/api'
+import { auth } from '../services/auth'
 import BButton from './base/BButton.vue'
 import BInput from './base/BInput.vue'
+import BSelect from './base/BSelect.vue'
 import BCard from './base/BCard.vue'
 
 const props = defineProps<{
@@ -12,11 +14,18 @@ const props = defineProps<{
 const emit = defineEmits(['registered', 'cancel'])
 
 const form = ref({
-  name: '',
-  email: '',
+  name: auth.user?.name || '',
+  email: auth.user?.email || '',
   org_id: '',
   birth_year: 2000,
   metadata: {}
+})
+
+onMounted(() => {
+    if (auth.user) {
+        form.value.name = auth.user.name || ''
+        form.value.email = auth.user.email || ''
+    }
 })
 
 const loading = ref(false)
@@ -74,9 +83,14 @@ const requestMagicLink = async () => {
     </div>
 
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
-      <BInput v-model="form.name" label="Fullt navn" placeholder="NAVNESEN" required />
-      
-      <BInput v-model="form.email" type="email" label="E-postadresse" placeholder="DIN@EPOST.NO" required />
+      <div v-if="!auth.user" class="space-y-6">
+        <BInput v-model="form.name" label="Fullt navn" placeholder="NAVNESEN" required />
+        <BInput v-model="form.email" type="email" label="E-postadresse" placeholder="DIN@EPOST.NO" required />
+      </div>
+      <div v-else class="brutalist-card bg-gray-50 border-dashed mb-8">
+          <p class="text-xs font-black uppercase text-gray-400 mb-1 tracking-tighter">Søker som:</p>
+          <p class="text-lg font-black uppercase italic">{{ auth.user.name || auth.user.email }}</p>
+      </div>
 
       <div class="grid grid-cols-2 gap-6">
         <BInput v-model="form.birth_year" type="number" label="Fødselsår" required />

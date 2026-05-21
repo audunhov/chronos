@@ -15,8 +15,8 @@ const showModal = ref(false)
 const fetchOrganizations = async () => {
   if (!auth.user) return
   try {
-    const data = await api.getOrganizations()
-    organizations.value = Array.isArray(data) ? data : []
+    const data = await api.getOrganizationHierarchy()
+    organizations.value = Array.isArray(data) ? data.map(o => ({ id: o.id, name: o.name })) : []
   } catch (e) {
     console.error('Failed to fetch orgs:', e)
   }

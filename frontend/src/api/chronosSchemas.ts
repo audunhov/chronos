@@ -60,6 +60,24 @@ export type MyMembership = {
   updated_at: string;
 };
 
+export type AuditLogEntry = {
+  id?: string;
+  correlation_id?: string;
+  action?: string;
+  target_id?: string | null;
+  detail?: {
+    [key: string]: any;
+  };
+  ip_address?: string;
+  user_agent?: string;
+  /**
+   * @format date-time
+   */
+  created_at?: string;
+  actor_email?: string | null;
+  org_name?: string | null;
+};
+
 export type Form = {
   id?: string;
   org_id?: string;

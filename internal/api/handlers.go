@@ -16,12 +16,17 @@ import (
 )
 
 type Server struct {
-	db         *sql.DB
-	eventStore *storage.EventStore
+	db          *sql.DB
+	eventStore  *storage.EventStore
+	auditLogger *storage.AuditLogger
 }
 
 func NewServer(db *sql.DB, es *storage.EventStore) *Server {
-	return &Server{db: db, eventStore: es}
+	return &Server{
+		db:          db,
+		eventStore:  es,
+		auditLogger: storage.NewAuditLogger(db),
+	}
 }
 
 func (s *Server) HealthHandler(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +148,10 @@ func (s *Server) GetMembersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
+
+	s.auditLogger.Log(r.Context(), "MEMBER_LIST_VIEWED", "", map[string]any{
+		"org_id": orgID,
+	})
 
 	type MemberResponse struct {
 		ID         string         `json:"id"`
@@ -688,6 +697,11 @@ func (s *Server) RegisterMemberHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.auditLogger.Log(r.Context(), "MEMBERSHIP_REGISTERED", membershipID, map[string]any{
+		"org_id": req.OrgID,
+		"email":  req.Email,
+	})
+
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"id": membershipID, "user_id": userID})
 }
@@ -753,6 +767,8 @@ func (s *Server) ShredMemberHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save event: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	s.auditLogger.Log(r.Context(), "MEMBERSHIP_SHREDDED", req.ID, nil)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -851,6 +867,62 @@ func (s *Server) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("Successfully deleted organization %s (Cascaded dependencies)", id)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) GetAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	
+	query := `
+		SELECT 
+			a.id, a.correlation_id, a.action, a.target_id, a.detail, 
+			a.ip_address, a.user_agent, a.created_at,
+			u.email as actor_email, o.name as org_name
+		FROM audit_logs a
+		LEFT JOIN users u ON a.actor_id = u.id
+		LEFT JOIN organization_hierarchy o ON a.org_id = o.id`
+	
+	var args []any
+	if orgID != "" {
+		query += " WHERE a.org_id = $1"
+		args = append(args, orgID)
+	}
+	
+	query += " ORDER BY a.created_at DESC LIMIT 100"
+
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type AuditEntry struct {
+		ID            string         `json:"id"`
+		CorrelationID string         `json:"correlation_id"`
+		Action        string         `json:"action"`
+		TargetID      sql.NullString `json:"target_id"`
+		Detail        map[string]any `json:"detail"`
+		IP            string         `json:"ip_address"`
+		UserAgent     string         `json:"user_agent"`
+		CreatedAt     time.Time      `json:"created_at"`
+		ActorEmail    sql.NullString `json:"actor_email"`
+		OrgName       sql.NullString `json:"org_name"`
+	}
+
+	var logs []AuditEntry
+	for rows.Next() {
+		var l AuditEntry
+		var detailJSON []byte
+		if err := rows.Scan(&l.ID, &l.CorrelationID, &l.Action, &l.TargetID, &detailJSON, &l.IP, &l.UserAgent, &l.CreatedAt, &l.ActorEmail, &l.OrgName); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.Unmarshal(detailJSON, &l.Detail)
+		logs = append(logs, l)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(logs)
 }
 
 func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request) {

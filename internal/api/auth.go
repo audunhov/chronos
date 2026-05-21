@@ -126,6 +126,24 @@ func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		user.OrgID = dbOrgID.String
 	}
 
+	// Hent den "høyeste" rollen fra role_assignments for JWT
+	// (En enkel prioritering: admin > leader > secretary > board_member > member)
+	var roleFromAssignment string
+	err = s.db.QueryRowContext(r.Context(), `
+		SELECT role_type FROM role_assignments 
+		WHERE user_id = $1 
+		ORDER BY CASE role_type 
+			WHEN 'admin' THEN 1 
+			WHEN 'leader' THEN 2 
+			WHEN 'secretary' THEN 3 
+			WHEN 'board_member' THEN 4 
+			ELSE 5 END ASC 
+		LIMIT 1`, user.ID).Scan(&roleFromAssignment)
+	
+	if err == nil {
+		user.Role = roleFromAssignment
+	}
+
 	token, err := s.generateJWT(user)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)

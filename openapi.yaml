@@ -471,6 +471,27 @@ paths:
                 items:
                   $ref: '#/components/schemas/StatRow'
 
+  /api/audit/logs:
+    get:
+      operationId: getAuditLogs
+      summary: Get the system audit trail
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit trail entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLogEntry'
+
   /api/forms:
     get:
       operationId: getForms
@@ -636,6 +657,35 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        correlation_id:
+          type: string
+        action:
+          type: string
+        target_id:
+          type: string
+          nullable: true
+        detail:
+          type: object
+          additionalProperties: true
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        actor_email:
+          type: string
+          nullable: true
+        org_name:
+          type: string
+          nullable: true
 
     Form:
       type: object

@@ -94,6 +94,7 @@ func main() {
 	apiMux.HandleFunc("/reports/as-of", server.GetMembersAsOfHandler)
 	apiMux.HandleFunc("/reports/treasury", server.GetTreasuryReportHandler)
 	apiMux.HandleFunc("/reports/stats", server.GetStatsHandler)
+	apiMux.HandleFunc("/audit/logs", server.GetAuditLogsHandler)
 	apiMux.HandleFunc("/forms", server.GetFormsHandler)
 	apiMux.HandleFunc("/commands/create-form", server.CreateFormHandler)
 	apiMux.HandleFunc("/commands/submit-form", server.SubmitFormResponseHandler)
@@ -122,7 +123,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: server.LoggingMiddleware(api.CORSMiddleware(mux)),
+		Handler: server.CorrelationMiddleware(server.LoggingMiddleware(api.CORSMiddleware(mux))),
 	}
 
 	// Graceful shutdown

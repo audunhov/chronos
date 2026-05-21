@@ -11,6 +11,7 @@ import FormManager from './components/FormManager.vue'
 import ProfileManager from './components/ProfileManager.vue'
 import ReactionManager from './components/ReactionManager.vue'
 import OrganListManager from './components/OrganListManager.vue'
+import AuditTrail from './components/AuditTrail.vue'
 import BButton from './components/base/BButton.vue'
 import BCard from './components/base/BCard.vue'
 import BBadge from './components/base/BBadge.vue'
@@ -26,7 +27,7 @@ const error = ref('')
 const selectedDate = ref('')
 const showModal = ref(false)
 const currentView = ref<'admin' | 'me'>('me')
-const adminTab = ref<'members' | 'treasury' | 'orgs' | 'stats' | 'forms' | 'pipelines' | 'organs'>('members')
+const adminTab = ref<'members' | 'treasury' | 'orgs' | 'stats' | 'forms' | 'pipelines' | 'organs' | 'audit'>('members')
 const meTab = ref<'memberships' | 'forms' | 'profile'>('memberships')
 const treasuryReport = ref<TreasuryItem[]>([])
 
@@ -321,6 +322,13 @@ watch(() => auth.user, (newUser) => {
                 >
                     ORGANER
                 </BButton>
+                <BButton 
+                    @click="adminTab = 'audit'"
+                    :variant="adminTab === 'audit' ? 'primary' : 'ghost'"
+                    class="text-sm uppercase italic"
+                >
+                    AUDIT LOG
+                </BButton>
             </nav>
         </div>
 
@@ -426,6 +434,11 @@ watch(() => auth.user, (newUser) => {
         <!-- Organs Admin Tab -->
         <div v-if="adminTab === 'organs'">
             <OrganListManager :orgs="organizations" />
+        </div>
+
+        <!-- Audit Admin Tab -->
+        <div v-if="adminTab === 'audit'">
+            <AuditTrail :orgs="organizations" />
         </div>
       </div>
     </div>

@@ -10,15 +10,39 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"register/internal/domain"
 )
-
-type contextKey string
 
 const (
-	UserIDKey contextKey = "user_id"
-	OrgIDKey  contextKey = "org_id"
-	RoleKey   contextKey = "role"
+	UserIDKey        = domain.UserIDKey
+	OrgIDKey         = domain.OrgIDKey
+	RoleKey          = domain.RoleKey
+	CorrelationIDKey = domain.CorrelationIDKey
 )
+
+func (s *Server) CorrelationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Correlation-ID")
+		if id == "" {
+			id = uuid.New().String()
+		}
+		
+		ip := r.RemoteAddr
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			ip = strings.Split(forwarded, ",")[0]
+		}
+		
+		ua := r.UserAgent()
+
+		ctx := context.WithValue(r.Context(), CorrelationIDKey, id)
+		ctx = context.WithValue(ctx, domain.IPAddressKey, ip)
+		ctx = context.WithValue(ctx, domain.UserAgentKey, ua)
+		
+		w.Header().Set("X-Correlation-ID", id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

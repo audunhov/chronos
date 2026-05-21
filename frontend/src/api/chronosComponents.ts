@@ -550,6 +550,31 @@ export const getStats = (signal?: AbortSignal) =>
     signal,
   });
 
+export type GetAuditLogsQueryParams = {
+  org_id?: string;
+};
+
+export type GetAuditLogsError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetAuditLogsResponse = Schemas.AuditLogEntry[];
+
+export type GetAuditLogsVariables = {
+  queryParams?: GetAuditLogsQueryParams;
+};
+
+export const getAuditLogs = (
+  variables: GetAuditLogsVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetAuditLogsResponse,
+    GetAuditLogsError,
+    undefined,
+    {},
+    GetAuditLogsQueryParams,
+    {}
+  >({ url: "/api/audit/logs", method: "get", ...variables, signal });
+
 export type GetFormsQueryParams = {
   org_id?: string;
 };

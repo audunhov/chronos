@@ -51,6 +51,7 @@ export const api = {
     // Admin Tools
     getTreasuryReport: () => chronos.getTreasuryReport(),
     getStats: () => chronos.getStats(),
+    getAuditLogs: (orgId?: string) => chronos.getAuditLogs({ queryParams: { org_id: orgId } }),
 
     // Reactions (Pipelines)
     getReactions: (orgId: string) => chronos.getReactions({ queryParams: { org_id: orgId } }),

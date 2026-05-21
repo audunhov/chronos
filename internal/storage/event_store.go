@@ -59,10 +59,12 @@ func (s *EventStore) AppendWithTx(ctx context.Context, tx *sql.Tx, aggregateID s
 
 	// 2. Lagre eventen
 	now := time.Now()
+	correlationID, _ := ctx.Value(domain.CorrelationIDKey).(string)
+	
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO event_store (aggregate_id, version, event_type, payload, created_at)
-		VALUES ($1, $2, $3, $4, $5)`,
-		aggregateID, version, event.EventType(), payload, now)
+		INSERT INTO event_store (aggregate_id, version, event_type, payload, created_at, correlation_id)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		aggregateID, version, event.EventType(), payload, now, correlationID)
 	if err != nil {
 		return err
 	}

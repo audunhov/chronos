@@ -26,10 +26,13 @@ export const api = {
         return res;
     },
 
-    // Profile
     getMyProfile: () => chronos.getMyProfile(),
     updateMyProfile: (data: { name?: string, email?: string }) => chronos.updateMyProfile({ body: data }),
     
+    // Admin User Inspection
+    getUserProfile: (id: string) => chronos.getUserProfile({ pathParams: { id } }),
+    getUserMemberships: (id: string) => chronos.getUserMemberships({ pathParams: { id } }),
+
     getMyMemberships: () => chronos.getMyMemberships(),
     getMembers: (orgId?: string) => chronos.getMembers({ 
         headers: getHeaders(orgId) 

@@ -166,7 +166,27 @@ func (w *ReactionWorker) processReactions(ctx context.Context, lastID *int64) er
 }
 
 func (w *ReactionWorker) handleEvent(ctx context.Context, aggregateID, eventType string, payload []byte) error {
-	rows, err := w.db.QueryContext(ctx, "SELECT action_type, config FROM event_reactions WHERE trigger_event = $1", eventType)
+	// Forbered trigger-data fra event payload
+	var payloadMap map[string]any
+	json.Unmarshal(payload, &payloadMap)
+
+	// Spesialhåndtering for FormResponseSubmitted: 
+	// Vi vil matche mot FormID (som er trigger_aggregate_id), ikke responseID (som er aggregate_id i store)
+	matchID := aggregateID
+	if eventType == domain.EventTypeFormSubmitted {
+		if formID, ok := payloadMap["form_id"].(string); ok {
+			matchID = formID
+		}
+	}
+
+	// Finn alle reaksjoner for dette eventet
+	// Vi matcher enten på nøyaktig aggregateID eller reaksjoner som gjelder ALLE (NULL)
+	rows, err := w.db.QueryContext(ctx, `
+		SELECT action_type, config 
+		FROM event_reactions 
+		WHERE trigger_event = $1 AND (trigger_aggregate_id = $2 OR trigger_aggregate_id IS NULL)`, 
+		eventType, matchID)
+	
 	if err != nil {
 		return err
 	}
@@ -184,10 +204,6 @@ func (w *ReactionWorker) handleEvent(ctx context.Context, aggregateID, eventType
 			if err := json.Unmarshal(configJSON, &config); err != nil {
 				continue
 			}
-
-			// Forbered trigger-data fra event payload
-			var payloadMap map[string]any
-			json.Unmarshal(payload, &payloadMap)
 
 			// Kjør DAG
 			if err := w.executor.Execute(config, payloadMap); err != nil {

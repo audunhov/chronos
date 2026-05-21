@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api } from '../services/api'
-import type { Form } from '../api'
+import type { Form, EventReaction } from '../api'
 import BCard from './base/BCard.vue'
 import BButton from './base/BButton.vue'
 import BInput from './base/BInput.vue'
 import BSelect from './base/BSelect.vue'
+import BBadge from './base/BBadge.vue'
 
 const props = defineProps<{
     isAdmin?: boolean
@@ -17,12 +18,14 @@ const selectedForm = ref<Form | null>(null)
 const answers = ref<Record<string, any>>({})
 const submitted = ref(false)
 
-// Form Creation state
+// Form Editor state
 const showCreator = ref(false)
+const editingFormId = ref<string | null>(null)
 const newFormTitle = ref('')
 const newFormOrg = ref('')
 const newFormFields = ref<{ name: string, label: string, type: 'text' | 'textarea' | 'select', options: string }[]>([])
 const organizations = ref<{ id: string, name: string }[]>([])
+const dependentReactions = ref<EventReaction[]>([])
 
 const addField = () => {
     newFormFields.value.push({ name: '', label: '', type: 'text', options: '' })
@@ -32,29 +35,58 @@ const removeField = (index: number) => {
     newFormFields.value.splice(index, 1)
 }
 
-const createForm = async () => {
+const saveForm = async () => {
     if (!newFormTitle.value || !newFormOrg.value) return
     
     const schema = {
         fields: newFormFields.value.map(f => ({
             ...f,
-            options: f.options ? f.options.split(',').map(s => s.trim()) : undefined
+            options: typeof f.options === 'string' ? f.options.split(',').map(s => s.trim()) : f.options
         }))
     }
 
     try {
-        await api.createForm({
-            title: newFormTitle.value,
-            org_id: newFormOrg.value,
-            schema
-        })
+        if (editingFormId.value) {
+            await api.updateForm({
+                id: editingFormId.value,
+                title: newFormTitle.value,
+                schema
+            })
+        } else {
+            await api.createForm({
+                title: newFormTitle.value,
+                org_id: newFormOrg.value,
+                schema
+            })
+        }
         showCreator.value = false
+        editingFormId.value = null
         newFormTitle.value = ''
         newFormOrg.value = ''
         newFormFields.value = []
+        dependentReactions.value = []
         fetchForms()
     } catch (e: any) {
         alert(e.message)
+    }
+}
+
+const startEdit = async (form: Form) => {
+    editingFormId.value = form.id!
+    newFormTitle.value = form.title!
+    newFormOrg.value = form.org_id!
+    newFormFields.value = (form.schema as any).fields.map((f: any) => ({
+        ...f,
+        options: Array.isArray(f.options) ? f.options.join(', ') : ''
+    }))
+    showCreator.value = true
+
+    // Sjekk om det finnes avhengige pipelines
+    try {
+        const reactions = await api.getReactions(form.org_id!, form.id!)
+        dependentReactions.value = Array.isArray(reactions) ? reactions.filter(r => r.trigger_event === 'FormResponseSubmitted') : []
+    } catch (e) {
+        console.error("Failed to check dependencies", e)
     }
 }
 
@@ -81,7 +113,6 @@ const fetchOrgs = async () => {
 
 const startForm = (form: Form) => {
     selectedForm.value = form
-    // Initialize answers for all fields in the schema
     const initialAnswers: Record<string, any> = {}
     if (form.schema && (form.schema as any).fields) {
         (form.schema as any).fields.forEach((f: any) => {
@@ -123,13 +154,23 @@ onMounted(() => {
             </BButton>
         </div>
 
-        <!-- Form Creator -->
+        <!-- Form Creator / Editor -->
         <div v-if="showCreator">
             <BCard class="max-w-4xl mx-auto !p-0 overflow-hidden">
                 <div class="bg-black text-white p-4">
-                    <h3 class="text-xl font-black uppercase italic">Konfigurer nytt skjema</h3>
+                    <h3 class="text-xl font-black uppercase italic">{{ editingFormId ? 'Rediger' : 'Konfigurer nytt' }} skjema</h3>
                 </div>
                 
+                <div v-if="dependentReactions.length > 0" class="bg-red-500 text-white p-6 border-b-4 border-black">
+                    <div class="flex items-center gap-4">
+                        <span class="text-4xl">⚠️</span>
+                        <div>
+                            <h4 class="font-black uppercase tracking-tight">ADVARSEL: AKTIVE PIPELINES</h4>
+                            <p class="text-sm font-bold opacity-90">Dette skjemaet er koblet til {{ dependentReactions.length }} aktive pipelines. Endringer i felt-IDer kan ødelegge automatikken!</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="p-8 space-y-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <BInput 
@@ -140,6 +181,7 @@ onMounted(() => {
                         <BSelect 
                             v-model="newFormOrg" 
                             label="Tilhører Organisasjon"
+                            :disabled="!!editingFormId"
                         >
                             <option value="">Velg organisasjon...</option>
                             <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
@@ -190,10 +232,10 @@ onMounted(() => {
                 </div>
 
                 <div class="bg-gray-100 p-6 border-t-4 border-black flex gap-4">
-                    <BButton @click="createForm" variant="success" class="flex-1 text-xl py-4" :disabled="!newFormTitle || !newFormOrg">
-                        LAGRE OG PUBLISER
+                    <BButton @click="saveForm" variant="success" class="flex-1 text-xl py-4" :disabled="!newFormTitle || !newFormOrg">
+                        {{ editingFormId ? 'OPPDATER' : 'LAGRE OG PUBLISER' }}
                     </BButton>
-                    <BButton @click="showCreator = false" variant="secondary" class="px-10">
+                    <BButton @click="showCreator = false; editingFormId = null" variant="secondary" class="px-10">
                         AVBRYT
                     </BButton>
                 </div>
@@ -202,15 +244,15 @@ onMounted(() => {
 
         <!-- Forms List -->
         <div v-if="!selectedForm && !showCreator" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <BCard v-for="f in forms" :key="f.id" class="flex flex-col h-full hover:bg-yellow-50">
+            <BCard v-for="f in forms" :key="f.id" class="flex flex-col h-full hover:bg-yellow-50 group">
                 <div class="flex-1">
                     <div class="flex justify-between items-start mb-4">
                         <span class="bg-black text-white text-[10px] font-black px-2 py-1 uppercase">{{ f.org_id ? f.org_id.split('-')[0] : '' }}</span>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase">v1.0</span>
+                        <BButton v-if="props.isAdmin" @click="startEdit(f)" variant="ghost" class="text-[8px] py-1 border-2 opacity-0 group-hover:opacity-100 transition-opacity">REDIGER</BButton>
                     </div>
                     <h3 class="font-black text-2xl mb-6 uppercase tracking-tighter leading-none">{{ f.title }}</h3>
                 </div>
-                <BButton @click="startForm(f)" variant="primary" class="w-full text-sm">
+                <BButton @click="startForm(f)" variant="primary" class="w-full text-sm italic font-black">
                     SVAR PÅ SKJEMA
                 </BButton>
             </BCard>
@@ -264,7 +306,7 @@ onMounted(() => {
                     </div>
 
                     <div class="p-8 bg-gray-50 border-t-4 border-black flex gap-4">
-                        <BButton @click="submit" variant="primary" class="flex-1 text-2xl py-6 italic">
+                        <BButton @click="submit" variant="primary" class="flex-1 text-2xl py-6 italic font-black">
                             SEND INN SVAR
                         </BButton>
                         <BButton @click="selectedForm = null" variant="secondary" class="px-8">

@@ -12,6 +12,8 @@ const props = defineProps<{
 }>()
 
 const selectedOrg = ref('')
+const triggerAggregateID = ref('')
+const forms = ref<any[]>([])
 const reactions = ref<any[]>([])
 const loading = ref(false)
 const showCreate = ref(false)
@@ -19,7 +21,7 @@ const showCreate = ref(false)
 // --- DAG PIPELINE BUILDER STATE ---
 const triggerEvent = ref('MembershipCreated')
 
-type NodeType = 'FindOrg' | 'FindOrgan' | 'FindRole' | 'Template' | 'SendEmail'
+type NodeType = 'FindOrg' | 'FindOrgan' | 'FindRole' | 'Template' | 'SendEmail' | 'CreateForm' | 'RegisterMember'
 
 type PipelineNode = {
     id: string;
@@ -54,14 +56,72 @@ const NODE_DEFS: Record<NodeType, { name: string, inputs: Record<string, string>
         name: 'Send E-post',
         inputs: { to_email: 'Mottaker E-post', subject: 'Emne', body: 'Melding' },
         outputs: {}
+    },
+    CreateForm: {
+        name: 'Opprett Skjema',
+        inputs: { org_id: 'Org-ID', title: 'Skjematittel', schema: 'JSON Schema' },
+        outputs: { form_id: 'Skjema-ID' }
+    },
+    RegisterMember: {
+        name: 'Registrer Medlem',
+        inputs: { org_id: 'Org-ID', name: 'Fullt Navn', email: 'E-post' },
+        outputs: { membership_id: 'Medlems-ID' }
     }
 }
 
-const TRIGGER_OUTPUTS: Record<string, string> = {
-    user_id: 'Hendelse Bruker-ID',
-    org_id: 'Hendelse Org-ID',
-    timestamp: 'Tidspunkt'
+const TRIGGER_OUTPUTS_BY_EVENT: Record<string, Record<string, string>> = {
+    MembershipCreated: {
+        user_id: 'Bruker-ID',
+        org_id: 'Organisasjons-ID',
+        role: 'Rolle',
+        timestamp: 'Tidspunkt'
+    },
+    FeeGenerated: {
+        id: 'Medlemskap-ID',
+        amount: 'Beløp (øre)',
+        period: 'Periode',
+        timestamp: 'Tidspunkt'
+    },
+    RoleAssigned: {
+        user_id: 'Bruker-ID',
+        org_id: 'Organisasjons-ID',
+        organ_id: 'Organ-ID',
+        role_type: 'Rolletype',
+        timestamp: 'Tidspunkt'
+    },
+    OrganizationCreated: {
+        id: 'Org-ID',
+        name: 'Navn',
+        path: 'Sti',
+        timestamp: 'Tidspunkt'
+    },
+    OrganCreated: {
+        id: 'Organ-ID',
+        org_id: 'Organisasjons-ID',
+        name: 'Navn',
+        timestamp: 'Tidspunkt'
+    },
+    FormCreated: {
+        id: 'Skjema-ID',
+        org_id: 'Organisasjons-ID',
+        title: 'Tittel',
+        timestamp: 'Tidspunkt'
+    },
+    FormResponseSubmitted: {
+        form_id: 'Skjema-ID',
+        user_id: 'Bruker-ID',
+        answers: 'Svar (Objekt)',
+        timestamp: 'Tidspunkt'
+    }
 }
+
+const currentTriggerOutputs = computed(() => {
+    return TRIGGER_OUTPUTS_BY_EVENT[triggerEvent.value] || {
+        user_id: 'Bruker-ID',
+        org_id: 'Org-ID',
+        timestamp: 'Tidspunkt'
+    }
+})
 
 const addNode = (type: NodeType) => {
     const id = `node_${pipelineNodes.value.length + 1}`
@@ -81,8 +141,12 @@ const getAvailableVariables = (nodeIndex: number) => {
     const vars: { label: string, value: string }[] = []
     
     // Add trigger outputs
-    for (const [key, desc] of Object.entries(TRIGGER_OUTPUTS)) {
+    for (const [key, desc] of Object.entries(currentTriggerOutputs.value)) {
         vars.push({ label: `Trigger: ${desc}`, value: `trigger.${key}` })
+        
+        if (triggerEvent.value === 'FormResponseSubmitted' && key === 'answers') {
+            vars.push({ label: 'Trigger: Svar (Fullt JSON)', value: 'trigger.answers' })
+        }
     }
 
     // Add previous nodes outputs
@@ -113,11 +177,22 @@ const fetchReactions = async () => {
     }
 }
 
+const fetchForms = async () => {
+    if (!selectedOrg.value) return
+    try {
+        const data = await api.getForms(selectedOrg.value)
+        forms.value = Array.isArray(data) ? data : []
+    } catch (e) {
+        console.error(e)
+    }
+}
+
 const createReaction = async () => {
     try {
         await api.createReaction({
             org_id: selectedOrg.value,
             trigger_event: triggerEvent.value,
+            trigger_aggregate_id: triggerAggregateID.value || undefined,
             action_type: 'PIPELINE_DAG',
             config: {
                 nodes: pipelineNodes.value
@@ -125,13 +200,17 @@ const createReaction = async () => {
         })
         showCreate.value = false
         pipelineNodes.value = []
+        triggerAggregateID.value = ''
         fetchReactions()
     } catch (e: any) {
         alert(e.message)
     }
 }
 
-watch(selectedOrg, fetchReactions)
+watch(selectedOrg, () => {
+    fetchReactions()
+    fetchForms()
+})
 
 onMounted(() => {
     if (props.orgs && props.orgs.length > 0) {
@@ -155,7 +234,7 @@ onMounted(() => {
         </div>
 
         <div v-if="showCreate" class="space-y-6">
-            <BCard class="bg-yellow-50 max-w-4xl mx-auto !p-0">
+            <BCard class="bg-yellow-50 max-w-4xl mx-auto !p-0 overflow-hidden">
                 <div class="bg-black text-white p-6 flex justify-between items-center">
                     <h3 class="text-2xl font-black uppercase italic tracking-tighter">Pipeline Builder</h3>
                     <BButton @click="showCreate = false" variant="danger" class="text-[10px] py-1">LUKK</BButton>
@@ -165,13 +244,33 @@ onMounted(() => {
                     <!-- Trigger Selection -->
                     <div class="border-4 border-black p-6 bg-white relative">
                         <BBadge class="absolute -top-3 left-4 bg-purple-400">1. START (TRIGGER)</BBadge>
-                        <BSelect v-model="triggerEvent" label="Når dette skjer i systemet:">
-                            <option value="MembershipCreated">Nytt Medlemskap Opprettet</option>
-                            <option value="FeeGenerated">Faktura Generert</option>
-                            <option value="RoleAssigned">Rolle Tildelt</option>
-                        </BSelect>
-                        <div class="mt-4 text-[10px] text-gray-500 font-mono">
-                            Eksponerer: trigger.user_id, trigger.org_id, trigger.timestamp
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <BSelect v-model="triggerEvent" label="Når dette skjer i systemet:">
+                                <option value="MembershipCreated">Nytt Medlemskap Opprettet</option>
+                                <option value="FeeGenerated">Faktura Generert</option>
+                                <option value="RoleAssigned">Rolle Tildelt</option>
+                                <option value="OrganizationCreated">Ny Organisasjon Opprettet</option>
+                                <option value="OrganCreated">Nytt Organ Opprettet</option>
+                                <option value="FormCreated">Nytt Skjema Publisert</option>
+                                <option value="FormResponseSubmitted">Skjema Besvart</option>
+                            </BSelect>
+
+                            <BSelect 
+                                v-if="triggerEvent === 'FormResponseSubmitted'" 
+                                v-model="triggerAggregateID" 
+                                label="Velg spesifikt skjema (Valgfri)"
+                            >
+                                <option value="">Alle skjemaer</option>
+                                <option v-for="f in forms" :key="f.id" :value="f.id">{{ f.title }}</option>
+                            </BSelect>
+                        </div>
+
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <span class="text-[10px] text-gray-500 font-black uppercase w-full mb-1">Eksponerer:</span>
+                            <code v-for="(desc, key) in currentTriggerOutputs" :key="key" class="text-[8px] bg-gray-100 px-1 border border-black" :title="desc">
+                                trigger.{{ key }}
+                            </code>
                         </div>
                     </div>
 
@@ -181,7 +280,7 @@ onMounted(() => {
                             <!-- Connection Line Visual -->
                             <div class="absolute w-8 h-2 bg-black top-1/2 -left-9"></div>
 
-                            <button @click="removeNode(index)" class="absolute -top-4 -right-4 bg-red-500 text-white w-8 h-8 border-4 border-black font-black hover:bg-red-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">X</button>
+                            <button @click="removeNode(index)" class="absolute -top-4 -right-4 bg-red-500 text-white w-8 h-8 border-4 border-black font-black flex items-center justify-center hover:bg-red-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">X</button>
                             
                             <BBadge class="absolute -top-3 left-4 bg-blue-400">Trinn {{ index + 2 }}: {{ node.id }}</BBadge>
                             <h4 class="text-xl font-black uppercase italic tracking-tighter mt-2 mb-6">{{ NODE_DEFS[node.type].name }}</h4>
@@ -235,7 +334,7 @@ onMounted(() => {
                             <div class="bg-white border-4 border-black p-6 border-dashed flex flex-col items-center gap-4">
                                 <h4 class="font-black uppercase text-sm italic">Legg til neste steg</h4>
                                 <div class="flex flex-wrap gap-2 justify-center">
-                                    <BButton v-for="(def, type) in NODE_DEFS" :key="type" @click="addNode(type as NodeType)" variant="ghost" class="text-[10px] py-1 border-dashed">+ {{ def.name }}</BButton>
+                                    <BButton v-for="(def, type) in NODE_DEFS" :key="type" @click="addNode(type as NodeType)" variant="ghost" class="text-[10px] py-1 border-dashed italic font-bold">+ {{ def.name }}</BButton>
                                 </div>
                             </div>
                         </div>
@@ -244,7 +343,7 @@ onMounted(() => {
                 </div>
 
                 <div class="bg-gray-100 p-6 border-t-8 border-black flex gap-4">
-                    <BButton @click="createReaction" variant="success" class="flex-1 text-2xl py-6 italic" :disabled="pipelineNodes.length === 0">
+                    <BButton @click="createReaction" variant="success" class="flex-1 text-2xl py-6 italic font-black" :disabled="pipelineNodes.length === 0">
                         LAGRE PIPELINE
                     </BButton>
                 </div>
@@ -255,18 +354,23 @@ onMounted(() => {
         <div class="grid grid-cols-1 gap-6">
             <BCard v-for="r in reactions" :key="r.id" :class="r.is_inherited ? 'bg-gray-50 opacity-80 border-dashed' : 'bg-white border-solid'">
                 <div class="flex justify-between items-start mb-6 border-b-4 border-black pb-4">
-                    <div class="flex items-center gap-4">
-                        <BBadge class="bg-purple-400 text-lg">TRIGGER: {{ r.trigger_event }}</BBadge>
-                        <span v-if="r.is_inherited" class="text-xs font-black uppercase text-blue-600 italic">↑ Arvet nedover</span>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex items-center gap-4">
+                            <BBadge class="bg-purple-400 text-lg italic">TRIGGER: {{ r.trigger_event }}</BBadge>
+                            <span v-if="r.is_inherited" class="text-xs font-black uppercase text-blue-600 italic">↑ Arvet nedover</span>
+                        </div>
+                        <div v-if="r.trigger_aggregate_id" class="text-[10px] font-mono text-gray-500">
+                            ID-FILTER: {{ r.trigger_aggregate_id }}
+                        </div>
                     </div>
-                    <BBadge class="bg-black text-white">{{ r.action_type }}</BBadge>
+                    <BBadge class="bg-black text-white px-4">{{ r.action_type }}</BBadge>
                 </div>
                 
                 <div v-if="r.action_type === 'PIPELINE_DAG'" class="space-y-2 ml-4 border-l-4 border-black pl-4">
                     <div v-for="(node, idx) in r.config.nodes" :key="idx" class="flex items-center gap-3">
-                        <span class="font-black text-xl leading-none">{{ Number(idx) + 1 }}.</span>
+                        <span class="font-black text-xl leading-none italic">{{ Number(idx) + 1 }}.</span>
                         <div class="bg-gray-100 border-2 border-black px-3 py-1 flex-1 flex justify-between items-center">
-                            <span class="font-bold uppercase text-xs">{{ NODE_DEFS[node.type as NodeType]?.name || node.type }}</span>
+                            <span class="font-black uppercase text-xs italic tracking-tight">{{ NODE_DEFS[node.type as NodeType]?.name || node.type }}</span>
                             <span class="font-mono text-[8px] text-gray-500">{{ node.id }}</span>
                         </div>
                     </div>
@@ -277,7 +381,7 @@ onMounted(() => {
             </BCard>
 
             <div v-if="reactions.length === 0 && !loading" class="py-32 text-center border-8 border-black border-dashed bg-white">
-                <h3 class="text-6xl font-black uppercase italic opacity-10 mb-4">Ingen dataflyt</h3>
+                <h3 class="text-6xl font-black uppercase italic opacity-10 mb-4 tracking-tighter">Ingen dataflyt</h3>
                 <p class="font-bold uppercase text-gray-400 tracking-widest">Ingen pipelines aktive for denne organisasjonen.</p>
             </div>
         </div>

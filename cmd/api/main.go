@@ -88,6 +88,8 @@ func main() {
 			server.GetOrganMembersHandler(w, r)
 		}
 	})
+	apiMux.HandleFunc("/admin/users/{id}", server.GetUserProfileHandler)
+	apiMux.HandleFunc("/admin/users/{id}/memberships", server.GetUserMembershipsHandler)
 	apiMux.HandleFunc("/commands/register-member", server.RegisterMemberHandler)
 	apiMux.HandleFunc("/commands/update-member", server.UpdateMemberHandler)
 	apiMux.HandleFunc("/commands/shred-member", server.ShredMemberHandler)
@@ -97,6 +99,7 @@ func main() {
 	apiMux.HandleFunc("/audit/logs", server.GetAuditLogsHandler)
 	apiMux.HandleFunc("/forms", server.GetFormsHandler)
 	apiMux.HandleFunc("/commands/create-form", server.CreateFormHandler)
+	apiMux.HandleFunc("/commands/update-form", server.UpdateFormHandler)
 	apiMux.HandleFunc("/commands/submit-form", server.SubmitFormResponseHandler)
 	
 	// Auth routes (Public)

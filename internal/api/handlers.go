@@ -75,6 +75,87 @@ func (s *Server) SwaggerHandler(w http.ResponseWriter, r *http.Request) {
 	`))
 }
 
+func (s *Server) GetUserProfileHandler(w http.ResponseWriter, r *http.Request) {
+	// Only admins can see other users
+	role, _ := r.Context().Value(RoleKey).(string)
+	if role != "admin" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	userID := r.PathValue("id")
+	if userID == "" {
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	var u domain.User
+	err := s.db.QueryRowContext(r.Context(), "SELECT id, email, name, created_at FROM users WHERE id = $1", userID).
+		Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
+	
+	if err == sql.ErrNoRows {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(u)
+}
+
+func (s *Server) GetUserMembershipsHandler(w http.ResponseWriter, r *http.Request) {
+	// Only admins can see other users
+	role, _ := r.Context().Value(RoleKey).(string)
+	if role != "admin" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	userID := r.PathValue("id")
+	if userID == "" {
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		SELECT m.id, m.org_id, o.name as org_name, m.status, m.role, m.balance, m.updated_at 
+		FROM membership_view m
+		JOIN organization_hierarchy o ON m.org_id = o.id
+		WHERE m.user_id = $1`
+	
+	rows, err := s.db.QueryContext(r.Context(), query, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type UserMembershipResponse struct {
+		ID        string    `json:"id"`
+		OrgID     string    `json:"org_id"`
+		OrgName   string    `json:"org_name"`
+		Status    string    `json:"status"`
+		Role      string    `json:"role"`
+		Balance   int       `json:"balance"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}
+
+	var memberships []UserMembershipResponse
+	for rows.Next() {
+		var m UserMembershipResponse
+		if err := rows.Scan(&m.ID, &m.OrgID, &m.OrgName, &m.Status, &m.Role, &m.Balance, &m.UpdatedAt); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		memberships = append(memberships, m)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(memberships)
+}
+
 func (s *Server) GetMyProfileHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(UserIDKey).(string)
 	
@@ -302,14 +383,23 @@ func (s *Server) GetReactionsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Hent alle reaksjoner som treffer denne path-en (arv oppover i hierarkiet)
 	query := `
-		SELECT er.id, er.org_id, er.trigger_event, er.action_type, er.config,
+		SELECT er.id, er.org_id, er.trigger_event, er.trigger_aggregate_id, er.action_type, er.config,
 		       (er.org_id != $1) as is_inherited
 		FROM event_reactions er
 		JOIN organization_hierarchy o ON er.org_id = o.id
-		WHERE o.path @> $2::ltree
-		ORDER BY o.path ASC`
+		WHERE o.path @> $2::ltree`
+	
+	args := []any{orgID, path}
+	
+	triggerAggregateID := r.URL.Query().Get("trigger_aggregate_id")
+	if triggerAggregateID != "" {
+		query += " AND (er.trigger_aggregate_id = $3 OR er.trigger_aggregate_id IS NULL)"
+		args = append(args, triggerAggregateID)
+	}
+	
+	query += " ORDER BY o.path ASC"
 
-	rows, err := s.db.QueryContext(r.Context(), query, orgID, path)
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -317,21 +407,24 @@ func (s *Server) GetReactionsHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type ReactionResponse struct {
-		ID           string         `json:"id"`
-		OrgID        string         `json:"org_id"`
-		TriggerEvent string         `json:"trigger_event"`
-		ActionType   string         `json:"action_type"`
-		Config       map[string]any `json:"config"`
-		IsInherited  bool           `json:"is_inherited"`
+		ID                 string         `json:"id"`
+		OrgID              string         `json:"org_id"`
+		TriggerEvent       string         `json:"trigger_event"`
+		TriggerAggregateID *string        `json:"trigger_aggregate_id"`
+		ActionType         string         `json:"action_type"`
+		Config             map[string]any `json:"config"`
+		IsInherited        bool           `json:"is_inherited"`
 	}
 
 	var reactions []ReactionResponse
 	for rows.Next() {
 		var r ReactionResponse
 		var configJSON []byte
-		if err := rows.Scan(&r.ID, &r.OrgID, &r.TriggerEvent, &r.ActionType, &configJSON, &r.IsInherited); err != nil {
+		var aggID sql.NullString
+		if err := rows.Scan(&r.ID, &r.OrgID, &r.TriggerEvent, &aggID, &r.ActionType, &configJSON, &r.IsInherited); err != nil {
 			continue
 		}
+		if aggID.Valid { r.TriggerAggregateID = &aggID.String }
 		json.Unmarshal(configJSON, &r.Config)
 		reactions = append(reactions, r)
 	}
@@ -342,10 +435,11 @@ func (s *Server) GetReactionsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		OrgID        string         `json:"org_id"`
-		TriggerEvent string         `json:"trigger_event"`
-		ActionType   string         `json:"action_type"`
-		Config       map[string]any `json:"config"`
+		OrgID              string         `json:"org_id"`
+		TriggerEvent       string         `json:"trigger_event"`
+		TriggerAggregateID *string        `json:"trigger_aggregate_id"`
+		ActionType         string         `json:"action_type"`
+		Config             map[string]any `json:"config"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
@@ -354,9 +448,9 @@ func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 
 	configJSON, _ := json.Marshal(req.Config)
 	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO event_reactions (org_id, trigger_event, action_type, config)
-		VALUES ($1, $2, $3, $4)`,
-		req.OrgID, req.TriggerEvent, req.ActionType, configJSON)
+		INSERT INTO event_reactions (org_id, trigger_event, trigger_aggregate_id, action_type, config)
+		VALUES ($1, $2, $3, $4, $5)`,
+		req.OrgID, req.TriggerEvent, sql.NullString{String: func() string { if req.TriggerAggregateID != nil { return *req.TriggerAggregateID }; return "" }(), Valid: req.TriggerAggregateID != nil}, req.ActionType, configJSON)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -365,7 +459,6 @@ func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 }
-
 func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
 	if orgID == "" {
@@ -885,6 +978,8 @@ func (s *Server) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) GetAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
+	actorID := r.URL.Query().Get("actor_id")
+	targetID := r.URL.Query().Get("target_id")
 	
 	query := `
 		SELECT 
@@ -896,9 +991,23 @@ func (s *Server) GetAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN organization_hierarchy o ON a.org_id = o.id`
 	
 	var args []any
+	var conditions []string
+
 	if orgID != "" {
-		query += " WHERE a.org_id = $1"
+		conditions = append(conditions, fmt.Sprintf("a.org_id = $%d", len(args)+1))
 		args = append(args, orgID)
+	}
+	if actorID != "" {
+		conditions = append(conditions, fmt.Sprintf("a.actor_id = $%d", len(args)+1))
+		args = append(args, actorID)
+	}
+	if targetID != "" {
+		conditions = append(conditions, fmt.Sprintf("a.target_id = $%d", len(args)+1))
+		args = append(args, targetID)
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 	
 	query += " ORDER BY a.created_at DESC LIMIT 100"
@@ -1139,6 +1248,42 @@ func (s *Server) CreateFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
+type UpdateFormRequest struct {
+	ID     string         `json:"id"`
+	Title  string         `json:"title"`
+	Schema map[string]any `json:"schema"`
+}
+
+func (s *Server) UpdateFormHandler(w http.ResponseWriter, r *http.Request) {
+	var req UpdateFormRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	// Finn gjeldende versjon
+	var version int
+	err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", req.ID).Scan(&version)
+	if err != nil {
+		http.Error(w, "Form not found", http.StatusNotFound)
+		return
+	}
+
+	event := domain.FormUpdated{
+		ID:        req.ID,
+		Title:     req.Title,
+		Schema:    req.Schema,
+		Timestamp: time.Now(),
+	}
+
+	if err := s.eventStore.Append(r.Context(), req.ID, version+1, event); err != nil {
+		http.Error(w, "Failed to save event: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) GetMembersAsOfHandler(w http.ResponseWriter, r *http.Request) {

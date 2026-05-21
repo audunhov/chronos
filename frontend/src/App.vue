@@ -12,6 +12,7 @@ import ProfileManager from './components/ProfileManager.vue'
 import ReactionManager from './components/ReactionManager.vue'
 import OrganListManager from './components/OrganListManager.vue'
 import AuditTrail from './components/AuditTrail.vue'
+import UserInspector from './components/UserInspector.vue'
 import BButton from './components/base/BButton.vue'
 import BCard from './components/base/BCard.vue'
 import BBadge from './components/base/BBadge.vue'
@@ -30,6 +31,7 @@ const currentView = ref<'admin' | 'me'>('me')
 const adminTab = ref<'members' | 'treasury' | 'orgs' | 'stats' | 'forms' | 'pipelines' | 'organs' | 'audit'>('members')
 const meTab = ref<'memberships' | 'forms' | 'profile'>('memberships')
 const treasuryReport = ref<TreasuryItem[]>([])
+const selectedUserId = ref<string | null>(null)
 
 const fetchMembers = async (silent = false) => {
   if (!auth.user || currentView.value !== 'admin') {
@@ -334,59 +336,70 @@ watch(() => auth.user, (newUser) => {
 
         <!-- Members Tab -->
         <div v-if="adminTab === 'members'" class="space-y-8">
-            <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-                <BSelect v-model="selectedOrg" label="Org-Filter" class="bg-black text-white border-white min-w-[250px]">
-                    <option value="">ALLE ORGANISASJONER</option>
-                    <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
-                </BSelect>
-
-                <BInput v-model="selectedDate" type="date" label="Historisk dato (As-Of)" class="bg-black text-white border-white" />
-                
-                <BButton @click="fetchMembers()" variant="secondary" class="italic">OPPDATER</BButton>
+            <div v-if="selectedUserId" class="space-y-6">
+                <BButton @click="selectedUserId = null" variant="secondary" class="text-xs">
+                    ← TILBAKE TIL LISTEN
+                </BButton>
+                <UserInspector :user-id="selectedUserId" />
             </div>
+            <div v-else class="space-y-8 animate-in fade-in">
+                <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
+                    <BSelect v-model="selectedOrg" label="Org-Filter" class="bg-black text-white border-white min-w-[250px]">
+                        <option value="">ALLE ORGANISASJONER</option>
+                        <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
+                    </BSelect>
 
-            <div class="overflow-x-auto border-4 border-black shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]">
-                <table class="brutalist-table">
-                <thead>
-                    <tr>
-                    <th class="brutalist-th">Identitet</th>
-                    <th class="brutalist-th">Org</th>
-                    <th class="brutalist-th">Status</th>
-                    <th class="brutalist-th">Rolle</th>
-                    <th class="brutalist-th">Saldo</th>
-                    <th class="brutalist-th">Sist endret</th>
-                    <th class="brutalist-th">Handlinger</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white">
-                    <tr v-if="loading" v-for="i in 5">
-                        <td colspan="7" class="brutalist-td animate-pulse bg-gray-50 h-12"></td>
-                    </tr>
-                    <tr v-else v-for="m in members" :key="m.id" class="hover:bg-blue-50 transition-colors">
-                    <td class="brutalist-td">
-                        <div class="font-black uppercase tracking-tighter">{{ m.name }}</div>
-                        <div class="text-[10px] font-bold text-gray-400">{{ m.email }}</div>
-                    </td>
-                    <td class="brutalist-td"><BBadge class="bg-gray-100">{{ m.org_id.split('-')[0] }}</BBadge></td>
-                    <td class="brutalist-td">
-                        <BBadge :class="m.status === 'ACTIVE' ? 'bg-green-400' : 'bg-red-400'">{{ m.status }}</BBadge>
-                    </td>
-                    <td class="brutalist-td font-bold uppercase text-xs">{{ m.role }}</td>
-                    <td class="brutalist-td font-black" :class="m.balance < 0 ? 'text-red-600' : 'text-green-600'">{{ m.balance }}</td>
-                    <td class="brutalist-td text-[10px] font-bold">{{ new Date(m.updated_at).toLocaleString() }}</td>
-                    <td class="brutalist-td">
-                        <BButton 
-                            v-if="m.status !== 'SHREDDED'"
-                            @click="shredMember(m.id)" 
-                            variant="danger"
-                            class="text-[8px] py-1 px-2 uppercase"
+                    <BInput v-model="selectedDate" type="date" label="Historisk dato (As-Of)" class="bg-black text-white border-white" />
+                    
+                    <BButton @click="fetchMembers()" variant="secondary" class="italic">OPPDATER</BButton>
+                </div>
+
+                <div class="overflow-x-auto border-4 border-black shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]">
+                    <table class="brutalist-table">
+                    <thead>
+                        <tr>
+                        <th class="brutalist-th">Identitet</th>
+                        <th class="brutalist-th">Org</th>
+                        <th class="brutalist-th">Status</th>
+                        <th class="brutalist-th">Rolle</th>
+                        <th class="brutalist-th">Saldo</th>
+                        <th class="brutalist-th text-right">Handlinger</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+                        <tr v-if="loading" v-for="i in 5" :key="i">
+                            <td colspan="6" class="brutalist-td animate-pulse bg-gray-50 h-12"></td>
+                        </tr>
+                        <tr v-else v-for="m in members" :key="m.id" 
+                            @click="selectedUserId = m.user_id"
+                            class="hover:bg-yellow-50 transition-colors cursor-pointer group"
                         >
-                            Glem (GDPR)
-                        </BButton>
-                    </td>
-                    </tr>
-                </tbody>
-                </table>
+                        <td class="brutalist-td">
+                            <div class="font-black uppercase tracking-tighter group-hover:text-blue-600 transition-colors">{{ m.name }}</div>
+                            <div class="text-[10px] font-bold text-gray-400">{{ m.email }}</div>
+                        </td>
+                        <td class="brutalist-td"><BBadge class="bg-gray-100">{{ m.org_id.split('-')[0] }}</BBadge></td>
+                        <td class="brutalist-td">
+                            <BBadge :class="m.status === 'ACTIVE' ? 'bg-green-400' : 'bg-red-400'">{{ m.status }}</BBadge>
+                        </td>
+                        <td class="brutalist-td font-bold uppercase text-xs">{{ m.role }}</td>
+                        <td class="brutalist-td font-black" :class="m.balance < 0 ? 'text-red-600' : 'text-green-600'">
+                            {{ (m.balance / 100).toFixed(2) }} kr
+                        </td>
+                        <td class="brutalist-td text-right">
+                            <BButton 
+                                v-if="m.status !== 'SHREDDED'"
+                                @click.stop="shredMember(m.id)" 
+                                variant="danger"
+                                class="text-[8px] py-1 px-2 uppercase"
+                            >
+                                SHRED
+                            </BButton>
+                        </td>
+                        </tr>
+                    </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 

@@ -214,6 +214,13 @@ func (s *EventStore) projectSynchronously(ctx context.Context, tx *sql.Tx, aggre
 			e.ID, e.OrgID, e.Title, schemaJSON, now)
 		return err
 
+	case domain.FormUpdated:
+		schemaJSON, _ := json.Marshal(e.Schema)
+		_, err := tx.ExecContext(ctx, `
+			UPDATE forms SET title = $1, schema = $2 WHERE id = $3`,
+			e.Title, schemaJSON, aggregateID)
+		return err
+
 	case domain.FormResponseSubmitted:
 		answersJSON, _ := json.Marshal(e.Answers)
 		_, err := tx.ExecContext(ctx, `

@@ -52,7 +52,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              $ref: '#/components/schemas/AuthResponse'
       responses:
         '200':
           description: Login successful
@@ -113,9 +113,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-    patch:
+    put:
       operationId: updateMyProfile
-      summary: Update personal information
+      summary: Update user profile
       security:
         - bearerAuth: []
       requestBody:
@@ -133,6 +133,22 @@ paths:
         '200':
           description: Profile updated
 
+  /api/me/memberships:
+    get:
+      operationId: getMyMemberships
+      summary: Get current user memberships
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of user memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyMembership'
+
   /api/admin/reactions:
     get:
       operationId: getReactions
@@ -143,6 +159,10 @@ paths:
         - in: query
           name: org_id
           required: true
+          schema:
+            type: string
+        - in: query
+          name: trigger_aggregate_id
           schema:
             type: string
       responses:
@@ -200,12 +220,23 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateOrganRequest'
+              type: object
+              required:
+                - org_id
+                - name
+              properties:
+                org_id:
+                  type: string
+                name:
+                  type: string
+                parent_organ_id:
+                  type: string
+                  nullable: true
       responses:
         '201':
           description: Organ created
 
-  /api/admin/organs/members:
+  /api/admin/organ-members:
     get:
       operationId: getOrganMembers
       summary: Get members of an organ
@@ -219,16 +250,16 @@ paths:
             type: string
       responses:
         '200':
-          description: List of members
+          description: List of organ members
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/OrganMember'
+                  $ref: '#/components/schemas/MemberRole'
     post:
       operationId: assignOrganMember
-      summary: Add a member to an organ
+      summary: Assign a member to an organ with a role
       security:
         - bearerAuth: []
       requestBody:
@@ -236,7 +267,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssignOrganMemberRequest'
+              type: object
+              required:
+                - user_id
+                - organ_id
+                - role_type
+              properties:
+                user_id:
+                  type: string
+                organ_id:
+                  type: string
+                role_type:
+                  type: string
       responses:
         '201':
           description: Member assigned
@@ -254,22 +296,6 @@ paths:
       responses:
         '200':
           description: Member removed
-
-  /api/me/memberships:
-    get:
-      operationId: getMyMemberships
-      summary: Get current user memberships
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: List of user memberships
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MyMembership'
 
   /api/members:
     get:
@@ -296,18 +322,18 @@ paths:
   /api/organizations:
     get:
       operationId: getOrganizations
-      summary: Get unique organization list
+      summary: Get unique organization IDs
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: List of organizations
+          description: List of organization IDs
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Org'
+                  type: string
 
   /api/organizations/hierarchy:
     get:
@@ -324,38 +350,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/OrgNode'
-
-  /api/commands/create-organization:
-    post:
-      operationId: createOrganization
-      summary: Create a new organization
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrgRequest'
-      responses:
-        '201':
-          description: Organization created
-
-  /api/commands/delete-organization:
-    post:
-      operationId: deleteOrganization
-      summary: Delete an organization
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: query
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Organization deleted
 
   /api/commands/register-member:
     post:
@@ -482,6 +476,14 @@ paths:
           name: org_id
           schema:
             type: string
+        - in: query
+          name: actor_id
+          schema:
+            type: string
+        - in: query
+          name: target_id
+          schema:
+            type: string
       responses:
         '200':
           description: Audit trail entries
@@ -491,6 +493,48 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AuditLogEntry'
+
+  /api/admin/users/{id}:
+    get:
+      operationId: getUserProfile
+      summary: Get any user profile (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/admin/users/{id}/memberships:
+    get:
+      operationId: getUserMemberships
+      summary: Get any user memberships (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of user memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyMembership'
 
   /api/forms:
     get:
@@ -513,22 +557,6 @@ paths:
                 items:
                   $ref: '#/components/schemas/Form'
 
-  /api/commands/submit-form:
-    post:
-      operationId: submitForm
-      summary: Submit a form response
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FormResponseRequest'
-      responses:
-        '201':
-          description: Form submitted
-
   /api/commands/create-form:
     post:
       operationId: createForm
@@ -544,6 +572,45 @@ paths:
       responses:
         '201':
           description: Form created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+
+  /api/commands/update-form:
+    post:
+      operationId: updateForm
+      summary: Update an existing form
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFormRequest'
+      responses:
+        '200':
+          description: Form updated
+
+  /api/commands/submit-form:
+    post:
+      operationId: submitForm
+      summary: Submit a form response
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormResponseRequest'
+      responses:
+        '201':
+          description: Form submitted
 
 components:
   securitySchemes:
@@ -618,6 +685,19 @@ components:
           type: object
           additionalProperties: true
 
+    UpdateFormRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+
     User:
       type: object
       properties:
@@ -633,14 +713,6 @@ components:
 
     MyMembership:
       type: object
-      required:
-        - id
-        - org_id
-        - org_name
-        - status
-        - role
-        - balance
-        - updated_at
       properties:
         id:
           type: string
@@ -658,34 +730,77 @@ components:
           type: string
           format: date-time
 
-    AuditLogEntry:
+    EventReaction:
       type: object
       properties:
         id:
           type: string
-        correlation_id:
+        org_id:
           type: string
-        action:
+        trigger_event:
           type: string
-        target_id:
+        trigger_aggregate_id:
           type: string
           nullable: true
-        detail:
+        action_type:
+          type: string
+        config:
           type: object
           additionalProperties: true
-        ip_address:
+        is_inherited:
+          type: boolean
+
+    CreateReactionRequest:
+      type: object
+      required:
+        - org_id
+        - trigger_event
+        - action_type
+        - config
+      properties:
+        org_id:
           type: string
-        user_agent:
+        trigger_event:
+          type: string
+        trigger_aggregate_id:
+          type: string
+        action_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+
+    Organ:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        name:
+          type: string
+        parent_organ_id:
+          type: string
+          nullable: true
+        member_count:
+          type: integer
+
+    MemberRole:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        role_type:
+          type: string
+        name:
+          type: string
+        email:
           type: string
         created_at:
           type: string
           format: date-time
-        actor_email:
-          type: string
-          nullable: true
-        org_name:
-          type: string
-          nullable: true
 
     Form:
       type: object
@@ -758,122 +873,37 @@ components:
         total_branch_balance:
           type: integer
 
-    Org:
-      type: object
-      required:
-        - id
-        - name
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-
-    EventReaction:
+    AuditLogEntry:
       type: object
       properties:
         id:
           type: string
-        org_id:
+        correlation_id:
           type: string
-        trigger_event:
+        action:
           type: string
-        action_type:
+        target_id:
           type: string
-        config:
+          nullable: true
+        detail:
           type: object
           additionalProperties: true
-        is_inherited:
-          type: boolean
-
-    CreateReactionRequest:
-      type: object
-      required:
-        - org_id
-        - trigger_event
-        - action_type
-        - config
-      properties:
-        org_id:
+        ip_address:
           type: string
-        trigger_event:
-          type: string
-        action_type:
-          type: string
-        config:
-          type: object
-          additionalProperties: true
-
-    Organ:
-      type: object
-      properties:
-        id:
-          type: string
-        org_id:
-          type: string
-        name:
-          type: string
-        parent_organ_id:
-          type: string
-        member_count:
-          type: integer
-
-    OrganMember:
-      type: object
-      properties:
-        id:
-          type: string
-        user_id:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-        role_type:
+        user_agent:
           type: string
         created_at:
           type: string
           format: date-time
-
-    AssignOrganMemberRequest:
-      type: object
-      required:
-        - organ_id
-        - user_id
-        - role_type
-      properties:
-        organ_id:
+        actor_email:
           type: string
-        user_id:
+          nullable: true
+        org_name:
           type: string
-        role_type:
-          type: string
-
-    CreateOrganRequest:
-      type: object
-      required:
-        - org_id
-        - name
-      properties:
-        org_id:
-          type: string
-        name:
-          type: string
-        parent_organ_id:
-          type: string
+          nullable: true
 
     Member:
       type: object
-      required:
-        - id
-        - org_id
-        - name
-        - email
-        - status
-        - role
-        - balance
-        - updated_at
-        - created_at
       properties:
         id:
           type: string
@@ -884,8 +914,6 @@ components:
         email:
           type: string
         status:
-          type: string
-        role:
           type: string
         metadata:
           type: object

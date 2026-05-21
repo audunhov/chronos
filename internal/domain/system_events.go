@@ -7,6 +7,7 @@ const (
 	EventTypeOrganizationDeleted = "OrganizationDeleted"
 	EventTypeOrganCreated        = "OrganCreated"
 	EventTypeFormCreated         = "FormCreated"
+	EventTypeFormUpdated         = "FormUpdated"
 	EventTypeFormSubmitted       = "FormResponseSubmitted"
 )
 
@@ -47,6 +48,15 @@ type FormCreated struct {
 }
 
 func (e FormCreated) EventType() string { return EventTypeFormCreated }
+
+type FormUpdated struct {
+	ID        string         `json:"id"`
+	Title     string         `json:"title"`
+	Schema    map[string]any `json:"schema"`
+	Timestamp time.Time      `json:"timestamp"`
+}
+
+func (e FormUpdated) EventType() string { return EventTypeFormUpdated }
 
 type FormResponseSubmitted struct {
 	FormID    string         `json:"form_id"`

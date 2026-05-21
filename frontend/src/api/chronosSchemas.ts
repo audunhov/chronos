@@ -37,6 +37,14 @@ export type CreateOrgRequest = {
   };
 };
 
+export type UpdateFormRequest = {
+  id: string;
+  title?: string;
+  schema?: {
+    [key: string]: any;
+  };
+};
+
 export type User = {
   id?: string;
   email?: string;
@@ -48,34 +56,58 @@ export type User = {
 };
 
 export type MyMembership = {
-  id: string;
-  org_id: string;
-  org_name: string;
-  status: string;
-  role: string;
-  balance: number;
+  id?: string;
+  org_id?: string;
+  org_name?: string;
+  status?: string;
+  role?: string;
+  balance?: number;
   /**
    * @format date-time
    */
-  updated_at: string;
+  updated_at?: string;
 };
 
-export type AuditLogEntry = {
+export type EventReaction = {
   id?: string;
-  correlation_id?: string;
-  action?: string;
-  target_id?: string | null;
-  detail?: {
+  org_id?: string;
+  trigger_event?: string;
+  trigger_aggregate_id?: string | null;
+  action_type?: string;
+  config?: {
     [key: string]: any;
   };
-  ip_address?: string;
-  user_agent?: string;
+  is_inherited?: boolean;
+};
+
+export type CreateReactionRequest = {
+  org_id: string;
+  trigger_event: string;
+  trigger_aggregate_id?: string;
+  action_type: string;
+  config: {
+    [key: string]: any;
+  };
+};
+
+export type Organ = {
+  id?: string;
+  org_id?: string;
+  name?: string;
+  parent_organ_id?: string | null;
+  member_count?: number;
+};
+
+export type MemberRole = {
+  id?: string;
+  user_id?: string;
+  role_type?: string;
+  name?: string;
+  email?: string;
   /**
    * @format date-time
    */
   created_at?: string;
-  actor_email?: string | null;
-  org_name?: string | null;
 };
 
 export type Form = {
@@ -115,83 +147,43 @@ export type TreasuryItem = {
   total_branch_balance: number;
 };
 
-export type Org = {
-  id: string;
-  name: string;
-};
-
-export type EventReaction = {
+export type AuditLogEntry = {
   id?: string;
-  org_id?: string;
-  trigger_event?: string;
-  action_type?: string;
-  config?: {
+  correlation_id?: string;
+  action?: string;
+  target_id?: string | null;
+  detail?: {
     [key: string]: any;
   };
-  is_inherited?: boolean;
-};
-
-export type CreateReactionRequest = {
-  org_id: string;
-  trigger_event: string;
-  action_type: string;
-  config: {
-    [key: string]: any;
-  };
-};
-
-export type Organ = {
-  id?: string;
-  org_id?: string;
-  name?: string;
-  parent_organ_id?: string;
-  member_count?: number;
-};
-
-export type OrganMember = {
-  id?: string;
-  user_id?: string;
-  name?: string;
-  email?: string;
-  role_type?: string;
+  ip_address?: string;
+  user_agent?: string;
   /**
    * @format date-time
    */
   created_at?: string;
-};
-
-export type AssignOrganMemberRequest = {
-  organ_id: string;
-  user_id: string;
-  role_type: string;
-};
-
-export type CreateOrganRequest = {
-  org_id: string;
-  name: string;
-  parent_organ_id?: string;
+  actor_email?: string | null;
+  org_name?: string | null;
 };
 
 export type Member = {
-  id: string;
-  org_id: string;
-  name: string;
-  email: string;
-  status: string;
-  role: string;
+  id?: string;
+  org_id?: string;
+  name?: string;
+  email?: string;
+  status?: string;
   metadata?: {
     [key: string]: any;
   };
-  balance: number;
+  balance?: number;
   fee_formula?: string;
   /**
    * @format date-time
    */
-  created_at: string;
+  created_at?: string;
   /**
    * @format date-time
    */
-  updated_at: string;
+  updated_at?: string;
 };
 
 export type RegisterMemberRequest = {

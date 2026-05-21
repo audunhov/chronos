@@ -89,6 +89,11 @@ func (s *Server) GetUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := uuid.Parse(userID); err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
 	var u domain.User
 	err := s.db.QueryRowContext(r.Context(), "SELECT id, email, name, created_at FROM users WHERE id = $1", userID).
 		Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
@@ -116,6 +121,11 @@ func (s *Server) GetUserMembershipsHandler(w http.ResponseWriter, r *http.Reques
 	userID := r.PathValue("id")
 	if userID == "" {
 		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(userID); err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
@@ -463,6 +473,11 @@ func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
 	if orgID == "" {
 		http.Error(w, "Missing org_id", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(orgID); err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
@@ -955,6 +970,11 @@ func (s *Server) DeleteOrganizationHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if _, err := uuid.Parse(id); err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
 	// Find current version
 	var version int
 	err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", id).Scan(&version)
@@ -993,15 +1013,21 @@ func (s *Server) GetAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
 	var args []any
 	var conditions []string
 
-	if orgID != "" {
+	// Hjelpefunksjon for å validere UUID før den sendes til databasen
+	isUUID := func(s string) bool {
+		_, err := uuid.Parse(s)
+		return err == nil
+	}
+
+	if orgID != "" && isUUID(orgID) {
 		conditions = append(conditions, fmt.Sprintf("a.org_id = $%d", len(args)+1))
 		args = append(args, orgID)
 	}
-	if actorID != "" {
+	if actorID != "" && isUUID(actorID) {
 		conditions = append(conditions, fmt.Sprintf("a.actor_id = $%d", len(args)+1))
 		args = append(args, actorID)
 	}
-	if targetID != "" {
+	if targetID != "" && isUUID(targetID) {
 		conditions = append(conditions, fmt.Sprintf("a.target_id = $%d", len(args)+1))
 		args = append(args, targetID)
 	}
@@ -1146,11 +1172,25 @@ func (s *Server) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetFormsHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
+	
+	if orgID != "" {
+		if _, err := uuid.Parse(orgID); err != nil {
+			http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+			return
+		}
+	}
+
 	query := "SELECT id, org_id, title, schema FROM forms"
 	var args []any
-	if orgID != "" && orgID != "undefined" {
-		query += " WHERE org_id = $1"
+	var conditions []string
+
+	if orgID != "" {
+		conditions = append(conditions, "org_id = $1")
 		args = append(args, orgID)
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	rows, err := s.db.QueryContext(r.Context(), query, args...)

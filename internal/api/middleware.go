@@ -138,8 +138,16 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			targetOrgID = r.Header.Get("X-Org-ID")
 		}
 		
+		// Valider UUID før bruk i DB
+		isUUID := false
+		if targetOrgID != "" {
+			if _, err := uuid.Parse(targetOrgID); err == nil {
+				isUUID = true
+			}
+		}
+
 		var role string
-		if targetOrgID != "" && s.db != nil {
+		if isUUID && s.db != nil {
 			// Sjekk hierarkisk tilgang: Har brukeren en rolle i denne orgen eller overordnede?
 			query := `
 				SELECT ra.role_type 

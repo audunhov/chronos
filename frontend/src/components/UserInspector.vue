@@ -22,7 +22,7 @@ const fetchData = async () => {
         const [user, ms, logs] = await Promise.all([
             api.getUserProfile(props.userId),
             api.getUserMemberships(props.userId),
-            api.getAuditLogs(undefined, props.userId, props.userId)
+            api.getAuditLogs('', props.userId, props.userId)
         ])
         profile.value = user
         memberships.value = Array.isArray(ms) ? ms : []

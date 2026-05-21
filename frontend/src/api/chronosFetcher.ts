@@ -119,10 +119,14 @@ export async function chronosFetch<
 
 const resolveUrl = (
   url: string,
-  queryParams: Record<string, string> = {},
+  queryParams: Record<string, string | undefined | null> = {},
   pathParams: Record<string, string> = {},
 ) => {
-  let query = new URLSearchParams(queryParams).toString();
+  const cleanQueryParams = Object.fromEntries(
+    Object.entries(queryParams).filter(([_, value]) => value !== undefined && value !== null)
+  ) as Record<string, string>;
+
+  let query = new URLSearchParams(cleanQueryParams).toString();
   if (query) query = `?${query}`;
   return (
     url.replace(/\{\w*\}/g, (key) => pathParams[key.slice(1, -1)] ?? "") + query

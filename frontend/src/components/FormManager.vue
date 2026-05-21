@@ -75,6 +75,20 @@ const saveForm = async () => {
     }
 }
 
+const deleteForm = async () => {
+    if (!editingFormId.value) return
+    if (!confirm('Er du sikker på at du vil slette dette skjemaet? Alle innsendte svar vil også bli fjernet permanent.')) return
+    
+    try {
+        await api.deleteForm(editingFormId.value)
+        showCreator.value = false
+        editingFormId.value = null
+        fetchForms()
+    } catch (e: any) {
+        alert(e.message)
+    }
+}
+
 const startEdit = async (form: Form) => {
     editingFormId.value = form.id!
     newFormTitle.value = form.title!
@@ -254,6 +268,9 @@ onMounted(() => {
                 <div class="bg-gray-100 p-6 border-t-4 border-black flex gap-4">
                     <BButton @click="saveForm" variant="success" class="flex-1 text-xl py-4" :disabled="!newFormTitle || !newFormOrg">
                         {{ editingFormId ? 'OPPDATER' : 'LAGRE OG PUBLISER' }}
+                    </BButton>
+                    <BButton v-if="editingFormId" @click="deleteForm" variant="danger" class="px-10 italic">
+                        SLETT SKJEMA
                     </BButton>
                     <BButton @click="showCreator = false; editingFormId = null" variant="secondary" class="px-10">
                         AVBRYT

@@ -102,6 +102,16 @@ const createOrgan = async () => {
     }
 }
 
+const deleteOrgan = async (id: string) => {
+    if (!confirm('Er du sikker på at du vil slette dette organet? Alle rolle-oppnevninger vil også bli fjernet.')) return
+    try {
+        await api.deleteOrgan(id)
+        fetchOrgans()
+    } catch (e: any) {
+        alert(e.message)
+    }
+}
+
 watch(selectedOrg, fetchOrgans)
 
 onMounted(() => {
@@ -208,9 +218,12 @@ onMounted(() => {
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            <BCard v-for="o in organs" :key="o.id" class="hover:bg-blue-50 transition-colors flex flex-col justify-between">
+            <BCard v-for="o in organs" :key="o.id" class="hover:bg-blue-50 transition-colors flex flex-col justify-between group">
                 <div>
-                    <span class="text-[8px] font-black uppercase text-gray-400 tracking-widest mb-1 block">ID: {{ o.id.split('-')[0] }}</span>
+                    <div class="flex justify-between items-start">
+                        <span class="text-[8px] font-black uppercase text-gray-400 tracking-widest mb-1 block">ID: {{ o.id.split('-')[0] }}</span>
+                        <button @click="deleteOrgan(o.id)" class="opacity-0 group-hover:opacity-100 text-red-600 font-black text-[10px] hover:underline transition-opacity">SLETT</button>
+                    </div>
                     <h3 class="text-2xl font-black uppercase tracking-tighter leading-none mb-4">{{ o.name }}</h3>
                 </div>
                 <div class="pt-4 border-t-2 border-black border-dashed flex justify-between items-center">

@@ -218,6 +218,20 @@ paths:
       responses:
         '200':
           description: Reaction updated
+    delete:
+      operationId: deleteReaction
+      summary: Delete an event reaction (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reaction deleted
 
   /api/admin/pipelines/test:
     post:
@@ -237,6 +251,10 @@ paths:
               properties:
                 pipeline_id:
                   type: string
+                config:
+                  type: object
+                  additionalProperties: true
+                  description: Optional configuration to test (instead of the saved one)
                 trigger_data:
                   type: object
                   additionalProperties: true
@@ -303,6 +321,20 @@ paths:
       responses:
         '201':
           description: Organ created
+    delete:
+      operationId: deleteOrgan
+      summary: Delete an organ (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organ deleted
 
   /api/admin/organ-members:
     get:
@@ -683,6 +715,22 @@ paths:
       responses:
         '200':
           description: Form updated
+
+  /api/commands/delete-form:
+    delete:
+      operationId: deleteForm
+      summary: Delete an existing form (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Form deleted
 
   /api/commands/submit-form:
     post:

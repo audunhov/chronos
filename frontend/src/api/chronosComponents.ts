@@ -223,6 +223,29 @@ export const updateReaction = (
     {}
   >({ url: "/api/admin/reactions", method: "put", ...variables, signal });
 
+export type DeleteReactionQueryParams = {
+  id: string;
+};
+
+export type DeleteReactionError = Fetcher.ErrorWrapper<undefined>;
+
+export type DeleteReactionVariables = {
+  queryParams: DeleteReactionQueryParams;
+};
+
+export const deleteReaction = (
+  variables: DeleteReactionVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    DeleteReactionError,
+    undefined,
+    {},
+    DeleteReactionQueryParams,
+    {}
+  >({ url: "/api/admin/reactions", method: "delete", ...variables, signal });
+
 export type TestPipelineError = Fetcher.ErrorWrapper<undefined>;
 
 export type TestPipelineResponse = {
@@ -233,6 +256,12 @@ export type TestPipelineResponse = {
 
 export type TestPipelineRequestBody = {
   pipeline_id: string;
+  /**
+   * Optional configuration to test (instead of the saved one)
+   */
+  config?: {
+    [key: string]: any;
+  };
   trigger_data: {
     [key: string]: any;
   };
@@ -299,6 +328,29 @@ export const createOrgan = (
   chronosFetch<undefined, CreateOrganError, CreateOrganRequestBody, {}, {}, {}>(
     { url: "/api/admin/organs", method: "post", ...variables, signal },
   );
+
+export type DeleteOrganQueryParams = {
+  id: string;
+};
+
+export type DeleteOrganError = Fetcher.ErrorWrapper<undefined>;
+
+export type DeleteOrganVariables = {
+  queryParams: DeleteOrganQueryParams;
+};
+
+export const deleteOrgan = (
+  variables: DeleteOrganVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    DeleteOrganError,
+    undefined,
+    {},
+    DeleteOrganQueryParams,
+    {}
+  >({ url: "/api/admin/organs", method: "delete", ...variables, signal });
 
 export type GetOrganMembersQueryParams = {
   organ_id: string;
@@ -734,6 +786,34 @@ export const updateForm = (
     {},
     {}
   >({ url: "/api/commands/update-form", method: "post", ...variables, signal });
+
+export type DeleteFormQueryParams = {
+  id: string;
+};
+
+export type DeleteFormError = Fetcher.ErrorWrapper<undefined>;
+
+export type DeleteFormVariables = {
+  queryParams: DeleteFormQueryParams;
+};
+
+export const deleteForm = (
+  variables: DeleteFormVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    DeleteFormError,
+    undefined,
+    {},
+    DeleteFormQueryParams,
+    {}
+  >({
+    url: "/api/commands/delete-form",
+    method: "delete",
+    ...variables,
+    signal,
+  });
 
 export type SubmitFormError = Fetcher.ErrorWrapper<undefined>;
 

@@ -62,12 +62,20 @@ export const api = {
         chronos.getReactions({ queryParams: { org_id: orgId, trigger_aggregate_id: triggerAggregateId } }),
     createReaction: (data: any) => chronos.createReaction({ body: data }),
     updateReaction: (id: string, config: any) => chronos.updateReaction({ body: { id, config } }),
-    testPipeline: (pipelineId: string, triggerData: any) => chronos.testPipeline({ body: { pipeline_id: pipelineId, trigger_data: triggerData } }),
+    deleteReaction: (id: string) => chronos.deleteReaction({ queryParams: { id } }),
+    testPipeline: (pipelineId: string, triggerData: any, config?: any) => chronos.testPipeline({ 
+        body: { 
+            pipeline_id: pipelineId, 
+            trigger_data: triggerData,
+            config: config
+        } as any
+    }),
 
 
     // Organs
     getOrgans: (orgId: string) => chronos.getOrgans({ queryParams: { org_id: orgId } }),
     createOrgan: (data: any) => chronos.createOrgan({ body: data }),
+    deleteOrgan: (id: string) => chronos.deleteOrgan({ queryParams: { id } }),
     getOrganMembers: (organId: string) => chronos.getOrganMembers({ queryParams: { organ_id: organId } }),
     assignOrganMember: (data: { organ_id: string, user_id: string, role_type: string }) => chronos.assignOrganMember({ body: data }),
     revokeOrganMember: (id: string) => chronos.revokeOrganMember({ queryParams: { id } }),
@@ -81,6 +89,7 @@ export const api = {
     getFormResponses: (formId: string) => chronos.getFormResponses({ queryParams: { form_id: formId } }),
     createForm: (data: any) => chronos.createForm({ body: data }),
     updateForm: (data: any) => chronos.updateForm({ body: data }),
+    deleteForm: (id: string) => chronos.deleteForm({ queryParams: { id } }),
     submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),
     
     // Member Management

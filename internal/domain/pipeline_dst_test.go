@@ -52,6 +52,12 @@ func simulateComplexPipeline(t *testing.T, seed int64) {
 			"Const": func(inputs map[string]any) ([]map[string]any, string, error) {
 				return wrap(map[string]any{"val": inputs["val"]}, "default", nil)
 			},
+			"code": func(inputs map[string]any) ([]map[string]any, string, error) {
+				// Simuler enkel JS-logikk i DST
+				// Hvis 'in' finnes, sett 'result' til 'processed_' + in
+				inVal := fmt.Sprintf("%v", inputs["in"])
+				return wrap(map[string]any{"result": "js_" + inVal}, "default", nil)
+			},
 		},
 	}
 
@@ -74,16 +80,16 @@ func simulateComplexPipeline(t *testing.T, seed int64) {
 	for i := 0; i < nodeCount; i++ {
 		nodeID := fmt.Sprintf("node_%d", i)
 		nodeType := ""
-		r := rng.Intn(10)
+		r := rng.Intn(12)
 		
-		if r < 4 { nodeType = "Action" } else if r < 7 { nodeType = "IfThen" } else if r < 9 { nodeType = "ForEach" } else { nodeType = "Const" }
+		if r < 4 { nodeType = "Action" } else if r < 7 { nodeType = "IfThen" } else if r < 9 { nodeType = "ForEach" } else if r < 11 { nodeType = "Const" } else { nodeType = "code" }
 
 		node := PipelineNode{ID: nodeID, Type: nodeType, Inputs: make(map[string]NodeInput), Data: make(map[string]any)}
 		
 		// Connect to random previous output
 		source := availableOutputs[rng.Intn(len(availableOutputs))]
 		targetPort := "data"
-		if nodeType == "IfThen" { targetPort = "v1" } else if nodeType == "ForEach" { targetPort = "list" } else if nodeType == "Const" { targetPort = "val" }
+		if nodeType == "IfThen" { targetPort = "v1" } else if nodeType == "ForEach" { targetPort = "list" } else if nodeType == "Const" { targetPort = "val" } else if nodeType == "code" { targetPort = "in" }
 
 		edges = append(edges, PipelineEdge{
 			Source: source.nodeID, SourcePort: source.port,
@@ -104,6 +110,8 @@ func simulateComplexPipeline(t *testing.T, seed int64) {
 			availableOutputs = append(availableOutputs, struct{nodeID, port string}{nodeID, "item"})
 		} else if nodeType == "Const" {
 			availableOutputs = append(availableOutputs, struct{nodeID, port string}{nodeID, "val"})
+		} else if nodeType == "code" {
+			availableOutputs = append(availableOutputs, struct{nodeID, port string}{nodeID, "result"})
 		}
 	}
 

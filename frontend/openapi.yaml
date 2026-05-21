@@ -1,0 +1,1144 @@
+openapi: 3.0.0
+info:
+  title: Chronos API
+  version: 1.0.0
+  description: API for Chronos Medlemsregister
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /api/auth/signup:
+    post:
+      operationId: signup
+      summary: User signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthResponse'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+
+  /api/auth/request-magic-link:
+    post:
+      operationId: requestMagicLink
+      summary: Request a magic link for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Request processed
+
+  /api/auth/magic-login:
+    get:
+      operationId: magicLogin
+      summary: Login using a magic link token
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid or expired token
+
+  /api/me/profile:
+    get:
+      operationId: getMyProfile
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    put:
+      operationId: updateMyProfile
+      summary: Update user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated
+
+  /api/me/memberships:
+    get:
+      operationId: getMyMemberships
+      summary: Get current user memberships
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of user memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyMembership'
+
+  /api/admin/reactions:
+    get:
+      operationId: getReactions
+      summary: Get event reactions for an organization (includes inherited)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: trigger_aggregate_id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of reactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventReaction'
+    post:
+      operationId: createReaction
+      summary: Create a new event reaction
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReactionRequest'
+      responses:
+        '201':
+          description: Reaction created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+    put:
+      operationId: updateReaction
+      summary: Update an event reaction configuration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+                - config
+              properties:
+                id:
+                  type: string
+                config:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Reaction updated
+    delete:
+      operationId: deleteReaction
+      summary: Delete an event reaction (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reaction deleted
+
+  /api/admin/pipelines/test:
+    post:
+      operationId: testPipeline
+      summary: Test a pipeline configuration (Admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pipeline_id
+                - trigger_data
+              properties:
+                pipeline_id:
+                  type: string
+                config:
+                  type: object
+                  additionalProperties: true
+                  description: Optional configuration to test (instead of the saved one)
+                trigger_data:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Test execution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  logs:
+                    type: array
+                    items:
+                      type: string
+
+  /api/admin/organs:
+    get:
+      operationId: getOrgans
+      summary: Get organs for an organization
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of organs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Organ'
+    post:
+      operationId: createOrgan
+      summary: Create a new organ
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - org_id
+                - name
+              properties:
+                org_id:
+                  type: string
+                name:
+                  type: string
+                parent_organ_id:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Organ created
+    delete:
+      operationId: deleteOrgan
+      summary: Delete an organ (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organ deleted
+
+  /api/admin/organ-members:
+    get:
+      operationId: getOrganMembers
+      summary: Get members of an organ
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: organ_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of organ members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemberRole'
+    post:
+      operationId: assignOrganMember
+      summary: Assign a member to an organ with a role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - organ_id
+                - role_type
+              properties:
+                user_id:
+                  type: string
+                organ_id:
+                  type: string
+                role_type:
+                  type: string
+      responses:
+        '201':
+          description: Member assigned
+    delete:
+      operationId: revokeOrganMember
+      summary: Remove a member from an organ
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member removed
+
+  /api/admin/form-responses:
+    get:
+      operationId: getFormResponses
+      summary: Get responses for a specific form (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: form_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of form responses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FormResponse'
+
+  /api/members:
+    get:
+      operationId: getMembers
+      summary: Get members
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: X-Org-ID
+          schema:
+            type: string
+          description: Optional organization filter
+      responses:
+        '200':
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+
+  /api/organizations:
+    get:
+      operationId: getOrganizations
+      summary: Get unique organization IDs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of organization IDs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /api/organizations/hierarchy:
+    get:
+      operationId: getOrganizationHierarchy
+      summary: Get full organization tree
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Hierarchy list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrgNode'
+
+  /api/commands/register-member:
+    post:
+      operationId: registerMember
+      summary: Register a new member
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterMemberRequest'
+      responses:
+        '201':
+          description: Member registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+
+  /api/commands/update-member:
+    post:
+      operationId: updateMember
+      summary: Update member fields
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRequest'
+      responses:
+        '200':
+          description: Member updated
+
+  /api/commands/shred-member:
+    post:
+      operationId: shredMember
+      summary: Shred member data (GDPR)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShredMemberRequest'
+      responses:
+        '200':
+          description: Member shredded
+
+  /api/reports/as-of:
+    get:
+      operationId: getMembersAsOf
+      summary: Get members as of a specific date
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: header
+          name: X-Org-ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of members as of date
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+
+  /api/reports/treasury:
+    get:
+      operationId: getTreasuryReport
+      summary: Get hierarchical financial report
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Treasury report
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TreasuryItem'
+
+  /api/reports/stats:
+    get:
+      operationId: getStats
+      summary: Get membership statistics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Statistics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MultiStats'
+
+  /api/audit/logs:
+    get:
+      operationId: getAuditLogs
+      summary: Get the system audit trail
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          schema:
+            type: string
+        - in: query
+          name: actor_id
+          schema:
+            type: string
+        - in: query
+          name: target_id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit trail entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLogEntry'
+
+  /api/admin/users/{id}:
+    get:
+      operationId: getUserProfile
+      summary: Get any user profile (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/admin/users/{id}/memberships:
+    get:
+      operationId: getUserMemberships
+      summary: Get any user memberships (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of user memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyMembership'
+
+  /api/forms:
+    get:
+      operationId: getForms
+      summary: Get available forms
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of forms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Form'
+
+  /api/commands/create-form:
+    post:
+      operationId: createForm
+      summary: Create a new form
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFormRequest'
+      responses:
+        '201':
+          description: Form created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+
+  /api/commands/update-form:
+    post:
+      operationId: updateForm
+      summary: Update an existing form
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFormRequest'
+      responses:
+        '200':
+          description: Form updated
+
+  /api/commands/delete-form:
+    delete:
+      operationId: deleteForm
+      summary: Delete an existing form (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Form deleted
+
+  /api/commands/submit-form:
+    post:
+      operationId: submitForm
+      summary: Submit a form response
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormResponseRequest'
+      responses:
+        '201':
+          description: Form submitted
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SignupRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        org_id:
+          type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    OrgNode:
+      type: object
+      required:
+        - id
+        - name
+        - path
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        parent_id:
+          type: string
+          nullable: true
+        path:
+          type: string
+        policy:
+          type: object
+          additionalProperties: true
+
+    CreateOrgRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        parent_id:
+          type: string
+        policy:
+          type: object
+          additionalProperties: true
+
+    UpdateFormRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    MyMembership:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        org_name:
+          type: string
+        status:
+          type: string
+        role:
+          type: string
+        balance:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+
+    EventReaction:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        trigger_event:
+          type: string
+        trigger_aggregate_id:
+          type: string
+          nullable: true
+        action_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        is_inherited:
+          type: boolean
+
+    CreateReactionRequest:
+      type: object
+      required:
+        - org_id
+        - trigger_event
+        - action_type
+        - config
+      properties:
+        org_id:
+          type: string
+        trigger_event:
+          type: string
+        trigger_aggregate_id:
+          type: string
+        action_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+
+    Organ:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        name:
+          type: string
+        parent_organ_id:
+          type: string
+          nullable: true
+        member_count:
+          type: integer
+
+    MemberRole:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        role_type:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Form:
+      type: object
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        title:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+
+    FormResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        form_id:
+          type: string
+        user_id:
+          type: string
+        user_name:
+          type: string
+        user_email:
+          type: string
+        answers:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    FormResponseRequest:
+      type: object
+      required:
+        - form_id
+        - answers
+      properties:
+        form_id:
+          type: string
+        answers:
+          type: object
+          additionalProperties: true
+
+    CreateFormRequest:
+      type: object
+      required:
+        - org_id
+        - title
+        - schema
+      properties:
+        org_id:
+          type: string
+        title:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+
+    MultiStats:
+      type: object
+      properties:
+        new_members:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+        churn:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+        total_active:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+
+    StatRow:
+      type: object
+      required:
+        - label
+        - value
+      properties:
+        label:
+          type: string
+        value:
+          type: integer
+
+    TreasuryItem:
+      type: object
+      required:
+        - id
+        - name
+        - path
+        - local_balance
+        - total_branch_balance
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+        local_balance:
+          type: integer
+        total_branch_balance:
+          type: integer
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        correlation_id:
+          type: string
+        action:
+          type: string
+        target_id:
+          type: string
+          nullable: true
+        detail:
+          type: object
+          additionalProperties: true
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        actor_email:
+          type: string
+          nullable: true
+        org_name:
+          type: string
+          nullable: true
+
+    Member:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        org_id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        balance:
+          type: integer
+        fee_formula:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegisterMemberRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        org_id:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    UpdateMemberRequest:
+      type: object
+      required:
+        - id
+        - updated_fields
+      properties:
+        id:
+          type: string
+        updated_fields:
+          type: object
+          additionalProperties: true
+
+    ShredMemberRequest:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string

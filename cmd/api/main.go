@@ -75,6 +75,8 @@ func main() {
 			server.CreateReactionHandler(w, r)
 		} else if r.Method == http.MethodPut {
 			server.UpdateReactionHandler(w, r)
+		} else if r.Method == http.MethodDelete {
+			server.DeleteReactionHandler(w, r)
 		} else {
 			server.GetReactionsHandler(w, r)
 		}
@@ -83,6 +85,8 @@ func main() {
 	apiMux.HandleFunc("/admin/organs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			server.CreateOrganHandler(w, r)
+		} else if r.Method == http.MethodDelete {
+			server.DeleteOrganHandler(w, r)
 		} else {
 			server.GetOrgansHandler(w, r)
 		}
@@ -109,6 +113,7 @@ func main() {
 	apiMux.HandleFunc("/admin/form-responses", server.GetFormResponsesHandler)
 	apiMux.HandleFunc("/commands/create-form", server.CreateFormHandler)
 	apiMux.HandleFunc("/commands/update-form", server.UpdateFormHandler)
+	apiMux.HandleFunc("/commands/delete-form", server.DeleteFormHandler)
 	apiMux.HandleFunc("/commands/submit-form", server.SubmitFormResponseHandler)
 	
 	// Auth routes (Public)

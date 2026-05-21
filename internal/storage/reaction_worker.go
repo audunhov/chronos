@@ -8,6 +8,8 @@ import (
 	"log"
 	"register/internal/domain"
 	"time"
+
+	"github.com/dop251/goja"
 )
 
 type ReactionWorker struct {
@@ -41,6 +43,7 @@ func (w *ReactionWorker) GetOperations(db domain.DBExecutor) map[string]func(inp
 		"Collect":        w.opCollect,
 		"RegisterMember": func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opRegisterMemberTx(db, in)) },
 		"CreateForm":     func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opCreateFormTx(db, in)) },
+		"code":           func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opCode(in)) },
 	}
 }
 
@@ -113,6 +116,61 @@ func (w *ReactionWorker) opListFilter(inputs map[string]any) (map[string]any, st
 		}
 	}
 	return map[string]any{"filtered_list": filtered}, "default", nil
+}
+
+func (w *ReactionWorker) opCode(inputs map[string]any) (map[string]any, string, error) {
+	code, _ := inputs["code"].(string)
+	if code == "" {
+		return nil, "", fmt.Errorf("missing javascript code")
+	}
+
+	vm := goja.New()
+
+	// Inject all inputs into the VM
+	for k, v := range inputs {
+		if k == "code" {
+			continue
+		}
+		vm.Set(k, v)
+	}
+
+	// Capture logs
+	var logs []string
+	vm.Set("log", func(call goja.FunctionCall) goja.Value {
+		msg := call.Argument(0).String()
+		logs = append(logs, msg)
+		return goja.Undefined()
+	})
+
+	// Execute
+	val, err := vm.RunString(code)
+	if err != nil {
+		return nil, "", fmt.Errorf("js error: %w", err)
+	}
+
+	// The result can be the return value of the script, 
+	// or we can expect the script to set some specific variables.
+	// For now, let's treat the final value as 'result' if it's not undefined.
+	res := make(map[string]any)
+	if !goja.IsUndefined(val) {
+		res["result"] = val.Export()
+	}
+
+	// Also export all variables set in the VM to the result map
+	// (This allows users to set multiple output variables)
+	for _, name := range vm.GlobalObject().Keys() {
+		if name == "log" || name == "code" {
+			continue
+		}
+		// Don't overwrite inputs unless the script explicitly changed them
+		res[name] = vm.Get(name).Export()
+	}
+
+	if len(logs) > 0 {
+		res["_logs"] = logs
+	}
+
+	return res, "default", nil
 }
 
 func (w *ReactionWorker) opFindOrgTx(db domain.DBExecutor, inputs map[string]any) (map[string]any, string, error) {

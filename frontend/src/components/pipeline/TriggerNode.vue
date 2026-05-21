@@ -1,30 +1,55 @@
 <script setup lang="ts">
-import { Handle, Position, type NodeProps, useVueFlow } from '@vue-flow/core'
+import { Handle, Position, type NodeProps } from '@vue-flow/core'
 
 const props = defineProps<NodeProps<{
     event: string;
+    aggregateId?: string;
     outputs: string[];
     availableEvents?: string[];
+    forms?: any[];
+    onUpdateEvent?: (ev: string) => void;
+    onUpdateAggregate?: (agg: string) => void;
 }>>()
-
-const { updateNodeData } = useVueFlow()
-
-const updateEvent = (event: string) => {
-    updateNodeData(props.id, { event })
-}
 </script>
 
 <template>
   <div :class="['bg-purple-50 border-4 border-black p-4 min-w-[220px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-purple-400' : '']">
-    <div class="mb-4">
+    <div class="mb-4 space-y-2">
         <p class="text-[8px] font-black uppercase text-purple-600">Start (Trigger)</p>
         <select 
             :value="data.event" 
-            @change="(e: any) => updateEvent(e.target.value)"
+            @change="(e: any) => data.onUpdateEvent?.(e.target.value)"
             class="w-full bg-white border-4 border-black p-1 font-black uppercase italic text-xs focus:outline-none focus:bg-yellow-400"
         >
             <option v-for="ev in data.availableEvents || []" :key="ev" :value="ev">{{ ev }}</option>
         </select>
+
+        <div v-if="data.event === 'TimedSchedule'" class="space-y-1 mt-2">
+            <p class="text-[8px] font-black uppercase text-gray-500">Intervall (Cron/Kort)</p>
+            <select 
+                :value="data.aggregateId || ''" 
+                @change="(e: any) => data.onUpdateAggregate?.(e.target.value)"
+                class="w-full bg-white border-2 border-black p-1 font-mono text-[10px] focus:outline-none focus:bg-yellow-400"
+            >
+                <option value="">Velg intervall...</option>
+                <option value="daily">Daglig (00:00)</option>
+                <option value="weekly">Ukentlig (Man 00:00)</option>
+                <option value="monthly">Månedlig (1. hver mnd)</option>
+                <option value="yearly">Årlig (1. jan)</option>
+            </select>
+        </div>
+
+        <div v-if="data.event === 'FormResponseSubmitted'" class="space-y-1 mt-2">
+            <p class="text-[8px] font-black uppercase text-gray-500">Skjema</p>
+            <select 
+                :value="data.aggregateId || ''" 
+                @change="(e: any) => data.onUpdateAggregate?.(e.target.value)"
+                class="w-full bg-white border-2 border-black p-1 font-mono text-[10px] focus:outline-none focus:bg-yellow-400"
+            >
+                <option value="">Velg skjema...</option>
+                <option v-for="f in data.forms || []" :key="f.id" :value="f.id">{{ f.title }}</option>
+            </select>
+        </div>
     </div>
 
     <div class="space-y-3">

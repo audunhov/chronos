@@ -206,6 +206,10 @@ func (s *EventStore) projectSynchronously(ctx context.Context, tx *sql.Tx, aggre
 			e.ID, e.OrgID, e.Name, parentID, now)
 		return err
 
+	case domain.OrganDeleted:
+		_, err := tx.ExecContext(ctx, "DELETE FROM organs WHERE id = $1", aggregateID)
+		return err
+
 	case domain.FormCreated:
 		schemaJSON, _ := json.Marshal(e.Schema)
 		_, err := tx.ExecContext(ctx, `
@@ -221,12 +225,40 @@ func (s *EventStore) projectSynchronously(ctx context.Context, tx *sql.Tx, aggre
 			e.Title, schemaJSON, aggregateID)
 		return err
 
+	case domain.FormDeleted:
+		_, err := tx.ExecContext(ctx, "DELETE FROM forms WHERE id = $1", aggregateID)
+		return err
+
 	case domain.FormResponseSubmitted:
 		answersJSON, _ := json.Marshal(e.Answers)
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO form_responses (form_id, user_id, answers, created_at)
 			VALUES ($1, $2, $3, $4)`,
 			e.FormID, e.UserID, answersJSON, now)
+		return err
+
+	case domain.ReactionCreated:
+		configJSON, _ := json.Marshal(e.Config)
+		var triggerAggID sql.NullString
+		if e.TriggerAggregateID != nil && *e.TriggerAggregateID != "" {
+			triggerAggID.String = *e.TriggerAggregateID
+			triggerAggID.Valid = true
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO event_reactions (id, org_id, trigger_event, trigger_aggregate_id, action_type, config, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			e.ID, e.OrgID, e.TriggerEvent, triggerAggID, e.ActionType, configJSON, now)
+		return err
+
+	case domain.ReactionUpdated:
+		configJSON, _ := json.Marshal(e.Config)
+		_, err := tx.ExecContext(ctx, `
+			UPDATE event_reactions SET config = $1 WHERE id = $2`,
+			configJSON, aggregateID)
+		return err
+
+	case domain.ReactionDeleted:
+		_, err := tx.ExecContext(ctx, "DELETE FROM event_reactions WHERE id = $1", aggregateID)
 		return err
 	}
 

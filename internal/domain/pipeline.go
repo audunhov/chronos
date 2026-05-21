@@ -30,10 +30,10 @@ type PipelineNode struct {
 
 type PipelineEdge struct {
 	ID         string `json:"id"`
-	Source     string `json:"source"`      // Node ID
-	SourcePort string `json:"source_handle"` // Port ID (e.g., 'true', 'false', 'default')
-	Target     string `json:"target"`      // Node ID
-	TargetPort string `json:"target_handle"` // Port ID (e.g., input name)
+	Source     string `json:"source"`        // Node ID
+	SourcePort string `json:"sourceHandle"`  // Port ID (e.g., 'true', 'false', 'default')
+	Target     string `json:"target"`        // Node ID
+	TargetPort string `json:"targetHandle"`  // Port ID (e.g., input name)
 }
 
 type PipelineConfig struct {

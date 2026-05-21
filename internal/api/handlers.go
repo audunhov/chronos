@@ -456,22 +456,25 @@ func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configJSON, _ := json.Marshal(req.Config)
-	var newID string
-	err := s.db.QueryRowContext(r.Context(), `
-		INSERT INTO event_reactions (org_id, trigger_event, trigger_aggregate_id, action_type, config)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id`,
-		req.OrgID, req.TriggerEvent, sql.NullString{String: func() string { if req.TriggerAggregateID != nil { return *req.TriggerAggregateID }; return "" }(), Valid: req.TriggerAggregateID != nil}, req.ActionType, configJSON).Scan(&newID)
+	id := uuid.New().String()
+	event := domain.ReactionCreated{
+		ID:                 id,
+		OrgID:              req.OrgID,
+		TriggerEvent:       req.TriggerEvent,
+		TriggerAggregateID: req.TriggerAggregateID,
+		ActionType:         req.ActionType,
+		Config:             req.Config,
+		Timestamp:          time.Now(),
+	}
 
-	if err != nil {
+	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"id": newID})
+	json.NewEncoder(w).Encode(map[string]string{"id": id})
 }
 func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
@@ -653,6 +656,29 @@ func (s *Server) CreateOrganHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) DeleteOrganHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	event := domain.OrganDeleted{
+		ID:        id,
+		Timestamp: time.Now(),
+	}
+
+	var version int
+	s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", id).Scan(&version)
+
+	if err := s.eventStore.Append(r.Context(), id, version+1, event); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 type RegisterMemberRequest struct {
@@ -877,6 +903,29 @@ func (s *Server) ShredMemberHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.auditLogger.Log(r.Context(), "MEMBERSHIP_SHREDDED", req.ID, nil)
+
+	w.WriteHeader(http.StatusOK)
+	}
+
+	func (s *Server) DeleteFormHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	event := domain.FormDeleted{
+		ID:        id,
+		Timestamp: time.Now(),
+	}
+
+	var version int
+	s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", id).Scan(&version)
+
+	if err := s.eventStore.Append(r.Context(), id, version+1, event); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -1197,26 +1246,31 @@ func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request
 
 func (s *Server) TestPipelineHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PipelineID  string         `json:"pipeline_id"`
-		TriggerData map[string]any `json:"trigger_data"`
+		PipelineID  string                `json:"pipeline_id"`
+		Config      *domain.PipelineConfig `json:"config,omitempty"`
+		TriggerData map[string]any        `json:"trigger_data"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Fetch the pipeline config
-	var configJSON []byte
-	err := s.db.QueryRowContext(r.Context(), "SELECT config FROM event_reactions WHERE id = $1", req.PipelineID).Scan(&configJSON)
-	if err != nil {
-		http.Error(w, "Pipeline not found", http.StatusNotFound)
-		return
-	}
-
 	var dag domain.PipelineConfig
-	if err := json.Unmarshal(configJSON, &dag); err != nil {
-		http.Error(w, "Invalid config", http.StatusInternalServerError)
-		return
+	if req.Config != nil {
+		dag = *req.Config
+	} else {
+		// 1. Fetch the pipeline config from DB
+		var configJSON []byte
+		err := s.db.QueryRowContext(r.Context(), "SELECT config FROM event_reactions WHERE id = $1", req.PipelineID).Scan(&configJSON)
+		if err != nil {
+			http.Error(w, "Pipeline not found", http.StatusNotFound)
+			return
+		}
+
+		if err := json.Unmarshal(configJSON, &dag); err != nil {
+			http.Error(w, "Invalid config", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// 2. Start Transaction
@@ -1262,12 +1316,39 @@ func (s *Server) UpdateReactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configJSON, _ := json.Marshal(req.Config)
-	_, err := s.db.ExecContext(r.Context(), `
-		UPDATE event_reactions SET config = $1 WHERE id = $2`,
-		configJSON, req.ID)
-	
-	if err != nil {
+	event := domain.ReactionUpdated{
+		ID:        req.ID,
+		Config:    req.Config,
+		Timestamp: time.Now(),
+	}
+
+	var version int
+	s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", req.ID).Scan(&version)
+
+	if err := s.eventStore.Append(r.Context(), req.ID, version+1, event); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) DeleteReactionHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	event := domain.ReactionDeleted{
+		ID:        id,
+		Timestamp: time.Now(),
+	}
+
+	var version int
+	s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(version), 0) FROM event_store WHERE aggregate_id = $1", id).Scan(&version)
+
+	if err := s.eventStore.Append(r.Context(), id, version+1, event); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

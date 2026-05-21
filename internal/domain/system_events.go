@@ -6,9 +6,14 @@ const (
 	EventTypeOrganizationCreated = "OrganizationCreated"
 	EventTypeOrganizationDeleted = "OrganizationDeleted"
 	EventTypeOrganCreated        = "OrganCreated"
+	EventTypeOrganDeleted        = "OrganDeleted"
 	EventTypeFormCreated         = "FormCreated"
 	EventTypeFormUpdated         = "FormUpdated"
+	EventTypeFormDeleted         = "FormDeleted"
 	EventTypeFormSubmitted       = "FormResponseSubmitted"
+	EventTypeReactionCreated     = "ReactionCreated"
+	EventTypeReactionUpdated     = "ReactionUpdated"
+	EventTypeReactionDeleted     = "ReactionDeleted"
 )
 
 type OrganizationCreated struct {
@@ -39,6 +44,13 @@ type OrganCreated struct {
 
 func (e OrganCreated) EventType() string { return EventTypeOrganCreated }
 
+type OrganDeleted struct {
+	ID        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (e OrganDeleted) EventType() string { return EventTypeOrganDeleted }
+
 type FormCreated struct {
 	ID        string         `json:"id"`
 	OrgID     string         `json:"org_id"`
@@ -58,6 +70,13 @@ type FormUpdated struct {
 
 func (e FormUpdated) EventType() string { return EventTypeFormUpdated }
 
+type FormDeleted struct {
+	ID        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (e FormDeleted) EventType() string { return EventTypeFormDeleted }
+
 type FormResponseSubmitted struct {
 	FormID    string         `json:"form_id"`
 	UserID    string         `json:"user_id"`
@@ -66,3 +85,30 @@ type FormResponseSubmitted struct {
 }
 
 func (e FormResponseSubmitted) EventType() string { return EventTypeFormSubmitted }
+
+type ReactionCreated struct {
+	ID                 string         `json:"id"`
+	OrgID              string         `json:"org_id"`
+	TriggerEvent       string         `json:"trigger_event"`
+	TriggerAggregateID *string        `json:"trigger_aggregate_id"`
+	ActionType         string         `json:"action_type"`
+	Config             map[string]any `json:"config"`
+	Timestamp          time.Time      `json:"timestamp"`
+}
+
+func (e ReactionCreated) EventType() string { return EventTypeReactionCreated }
+
+type ReactionUpdated struct {
+	ID        string         `json:"id"`
+	Config    map[string]any `json:"config"`
+	Timestamp time.Time      `json:"timestamp"`
+}
+
+func (e ReactionUpdated) EventType() string { return EventTypeReactionUpdated }
+
+type ReactionDeleted struct {
+	ID        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (e ReactionDeleted) EventType() string { return EventTypeReactionDeleted }

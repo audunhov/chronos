@@ -497,10 +497,8 @@ export const getTreasuryReport = (signal?: AbortSignal) =>
 
 export type GetStatsError = Fetcher.ErrorWrapper<undefined>;
 
-export type GetStatsResponse = Schemas.StatRow[];
-
 export const getStats = (signal?: AbortSignal) =>
-  chronosFetch<GetStatsResponse, GetStatsError, undefined, {}, {}, {}>({
+  chronosFetch<Schemas.MultiStats, GetStatsError, undefined, {}, {}, {}>({
     url: "/api/reports/stats",
     method: "get",
     signal,

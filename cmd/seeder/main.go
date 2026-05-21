@@ -24,11 +24,12 @@ func main() {
 	es := storage.NewEventStore(db)
 	ctx := context.Background()
 
-	log.Println("Wiping existing data for reset...")
+	log.Println("Wiping existing data for full historical reset...")
 	tables := []string{
 		"form_responses", "forms", "email_outbox", "email_templates",
 		"role_assignments", "organs", "membership_view", "event_store",
-		"users", "organization_hierarchy",
+		"users", "organization_hierarchy", "audit_logs", "magic_links",
+		"payment_pipelines", "invoice_view",
 	}
 	for _, table := range tables {
 		_, err := db.ExecContext(ctx, "TRUNCATE TABLE "+table+" CASCADE")
@@ -37,7 +38,7 @@ func main() {
 		}
 	}
 
-	// 1. Create Hierarchy with Static UUIDs for Idempotency
+	// 1. Create Hierarchy
 	nationalID := "00000000-0000-0000-0000-000000000001"
 	regionID := "00000000-0000-0000-0000-000000000002"
 	localID := "00000000-0000-0000-0000-000000000003"
@@ -56,7 +57,7 @@ func main() {
 
 	for _, o := range orgs {
 		_, err := db.ExecContext(ctx, 
-			"INSERT INTO organization_hierarchy (id, name, parent_id, path, policy) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING",
+			"INSERT INTO organization_hierarchy (id, name, parent_id, path, policy) VALUES ($1, $2, $3, $4, $5)",
 			o.id, o.name, o.parentID, o.path, o.policy)
 		if err != nil {
 			log.Fatalf("Failed to create org %s: %v", o.name, err)
@@ -65,89 +66,119 @@ func main() {
 	log.Println("Created organization hierarchy")
 
 	// 2. Create Admin User
-	adminEmail := "admin@chronos.no"
-	var adminID string
-	err = db.QueryRowContext(ctx, "SELECT id FROM users WHERE email = $1", adminEmail).Scan(&adminID)
-	if err == sql.ErrNoRows {
-		adminID = uuid.New().String()
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-		
-		adminEvent := domain.UserCreated{
-			ID:           adminID,
-			Email:        adminEmail,
-			Name:         "System Admin",
-			PasswordHash: string(hashedPassword),
-			Timestamp:    time.Now(),
-		}
-		_ = es.Append(ctx, adminID, 1, adminEvent)
-		
-		// Update role and org for admin
-		_, _ = db.ExecContext(ctx, "UPDATE users SET role = 'admin', org_id = $1 WHERE id = $2", nationalID, adminID)
-		_, _ = db.ExecContext(ctx, "INSERT INTO role_assignments (user_id, org_id, role_type) VALUES ($1, $2, 'admin')", adminID, nationalID)
-		log.Println("Created admin user (admin@chronos.no / admin123)")
-	} else {
-		log.Println("Admin user already exists")
-	}
-
-	// 3. Seed Users and Memberships
-	rng := rand.New(rand.NewSource(42))
-	names := []string{"Audun", "Bente", "Christian", "Dorthe", "Erik", "Frida", "Gunnar", "Hanne", "Ivar", "Janne"}
+	adminID := "00000000-0000-0000-0000-ffffffffffff"
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
 	
-	for i := 0; i < 50; i++ {
+	adminEvent := domain.UserCreated{
+		ID:           adminID,
+		Email:        "admin@chronos.no",
+		Name:         "System Admin",
+		PasswordHash: string(hashedPassword),
+		Timestamp:    time.Now().AddDate(-3, 0, 0), // Born 3 years ago
+	}
+	_ = es.Append(ctx, adminID, 1, adminEvent)
+	
+	_, _ = db.ExecContext(ctx, "INSERT INTO role_assignments (user_id, org_id, role_type) VALUES ($1, $2, 'admin')", adminID, nationalID)
+	log.Println("Created admin user (admin@chronos.no / admin123)")
+
+	// 3. Seed Users and Memberships (Varied over 3 years)
+	rng := rand.New(rand.NewSource(1337))
+	names := []string{"Audun", "Bente", "Christian", "Dorthe", "Erik", "Frida", "Gunnar", "Hanne", "Ivar", "Janne", "Knut", "Lise", "Morten", "Nina", "Ole", "Pia"}
+	
+	startDate := time.Now().AddDate(-3, 0, 0)
+	
+	for i := 0; i < 150; i++ {
+		// Random creation date between 3 years ago and now
+		daysOffset := rng.Intn(3 * 365)
+		userBorn := startDate.AddDate(0, 0, daysOffset)
+		
+		userID := uuid.New().String()
+		name := fmt.Sprintf("%s %s-sen", names[rng.Intn(len(names))], names[rng.Intn(len(names))])
 		email := fmt.Sprintf("user%d@eksempel.no", i)
-		var userID string
-		err = db.QueryRowContext(ctx, "SELECT id FROM users WHERE email = $1", email).Scan(&userID)
-		if err == sql.ErrNoRows {
-			userID = uuid.New().String()
-			name := fmt.Sprintf("%s %s-sen", names[rng.Intn(len(names))], names[rng.Intn(len(names))])
-			
-			userEvent := domain.UserCreated{
-				ID:           userID,
-				Email:        email,
-				Name:         name,
-				PasswordHash: string(hashedPassword),
-				Timestamp:    time.Now().AddDate(0, 0, -rng.Intn(365)),
-			}
-			_ = es.Append(ctx, userID, 1, userEvent)
+		
+		userEvent := domain.UserCreated{
+			ID:           userID,
+			Email:        email,
+			Name:         name,
+			PasswordHash: string(hashedPassword),
+			Timestamp:    userBorn,
+		}
+		_ = es.Append(ctx, userID, 1, userEvent)
 
-			// Join either local, region or national
-			targetOrg := localID
-			if rng.Intn(10) > 8 { targetOrg = regionID }
-			if rng.Intn(10) > 9 { targetOrg = nationalID }
+		// Join an org shortly after
+		targetOrg := localID
+		if rng.Intn(10) > 8 { targetOrg = regionID }
+		
+		membershipID := uuid.New().String()
+		version := 1
+		msEvent := domain.MembershipCreated{
+			ID:        membershipID,
+			UserID:    userID,
+			OrgID:     targetOrg,
+			Role:      "member",
+			Metadata:  map[string]any{"birth_year": 1970 + rng.Intn(40)},
+			Timestamp: userBorn.Add(time.Hour * 2),
+		}
+		_ = es.Append(ctx, membershipID, version, msEvent)
+		version++
 
-			membershipID := uuid.New().String()
-			membershipEvent := domain.MembershipCreated{
+		// Generate yearly fees and random payments
+		current := userBorn.AddDate(0, 1, 0) // First fee 1 month after join
+		for current.Before(time.Now()) {
+			feeAmount := 50000 // 500 NOK
+			_ = es.Append(ctx, membershipID, version, domain.FeeGenerated{
 				ID:        membershipID,
-				UserID:    userID,
-				OrgID:     targetOrg,
-				Role:      "member",
-				Metadata:  map[string]any{"seeded": true},
-				Timestamp: time.Now().AddDate(0, 0, -rng.Intn(30)),
-			}
-			_ = es.Append(ctx, membershipID, 1, membershipEvent)
+				Amount:    feeAmount,
+				Period:    fmt.Sprintf("%d", current.Year()),
+				Timestamp: current,
+			})
+			version++
 
-			// Random financial history
-			for j := 0; j < rng.Intn(5); j++ {
-				feeEvent := domain.FeeGenerated{
-					ID:        membershipID,
-					Amount:    rng.Intn(5) * 100,
-					Period:    "2026",
-					Timestamp: time.Now().AddDate(0, 0, -rng.Intn(100)),
+			// 80% chance of paying
+			if rng.Intn(10) < 8 {
+				payDate := current.AddDate(0, 0, rng.Intn(30))
+				if payDate.Before(time.Now()) {
+					_ = es.Append(ctx, membershipID, version, domain.PaymentReceived{
+						ID:        membershipID,
+						Amount:    feeAmount,
+						Timestamp: payDate,
+					})
+					version++
 				}
-				_ = es.Append(ctx, membershipID, j+2, feeEvent)
+			}
+
+			current = current.AddDate(1, 0, 0) // Yearly fee
+		}
+
+		// Churn: 15% chance of leaving (Shredding)
+		if rng.Intn(100) < 15 {
+			leaveDate := userBorn.AddDate(0, rng.Intn(24), rng.Intn(30))
+			if leaveDate.Before(time.Now()) {
+				_ = es.Append(ctx, membershipID, version, domain.MembershipShredded{
+					ID:        membershipID,
+					Timestamp: leaveDate,
+				})
 			}
 		}
 	}
-	log.Println("Seeded users with membership and financial history")
+	log.Println("Seeded 150 users with 3 years of history and simulated churn")
 
-	// 4. Email Templates
-	_, _ = db.ExecContext(ctx, `
-		INSERT INTO email_templates (org_id, name, subject, body_html) 
-		VALUES ($1, 'Velkomst', 'Velkommen til {{.OrgName}}', '<h1>Hei {{.UserName}}!</h1><p>Velkommen som medlem.</p>')
-		ON CONFLICT DO NOTHING`,
-		nationalID)
-	log.Println("Created default email template")
+	// 4. Default Form
+	formID := uuid.New().String()
+	formEvent := domain.FormCreated{
+		ID:    formID,
+		OrgID: nationalID,
+		Title: "Medlemsundersøkelse 2026",
+		Schema: map[string]any{
+			"fields": []map[string]any{
+				{"name": "trivsel", "label": "Hvor bra trives du?", "type": "select", "options": []string{"Veldig bra", "Bra", "Ok", "Dårlig"}},
+				{"name": "kommentar", "label": "Noe mer på hjertet?", "type": "textarea"},
+			},
+		},
+		Timestamp: time.Now().AddDate(-1, 0, 0),
+	}
+	_ = es.Append(ctx, formID, 1, formEvent)
+	log.Println("Created default survey")
 
 	log.Println("Bootstrapping complete!")
 }

@@ -461,9 +461,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/StatRow'
+                $ref: '#/components/schemas/MultiStats'
 
   /api/audit/logs:
     get:
@@ -841,6 +839,26 @@ components:
         schema:
           type: object
           additionalProperties: true
+
+    MultiStats:
+      type: object
+      properties:
+        new_members:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+        churn:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+        total_active:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
 
     StatRow:
       type: object

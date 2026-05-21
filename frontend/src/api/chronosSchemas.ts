@@ -134,6 +134,13 @@ export type CreateFormRequest = {
   };
 };
 
+export type MultiStats = {
+  new_members?: StatRow[];
+  churn?: StatRow[];
+  total_active?: StatRow[];
+  payments?: StatRow[];
+};
+
 export type StatRow = {
   label: string;
   value: number;

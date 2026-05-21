@@ -1134,16 +1134,30 @@ func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
-	// Hent medlemsvekst per måned siste år
 	query := `
+		WITH months AS (
+			SELECT TO_CHAR(date_trunc('month', d), 'YYYY-MM') as month
+			FROM generate_series(NOW() - INTERVAL '35 months', NOW(), '1 month') d
+		),
+		stats AS (
+			SELECT 
+				TO_CHAR(created_at, 'YYYY-MM') as month,
+				COUNT(*) FILTER (WHERE event_type = 'MembershipCreated') as new_count,
+				COUNT(*) FILTER (WHERE event_type = 'MembershipShredded') as churn_count,
+				COUNT(*) FILTER (WHERE event_type = 'PaymentReceived') as pay_count
+			FROM event_store
+			WHERE created_at > NOW() - INTERVAL '36 months'
+			GROUP BY month
+		)
 		SELECT 
-			TO_CHAR(created_at, 'YYYY-MM') as month,
-			COUNT(*) as count
-		FROM event_store
-		WHERE event_type = 'MembershipCreated'
-		AND created_at > NOW() - INTERVAL '12 months'
-		GROUP BY month
-		ORDER BY month ASC`
+			m.month,
+			COALESCE(s.new_count, 0),
+			COALESCE(s.churn_count, 0),
+			SUM(COALESCE(s.new_count, 0) - COALESCE(s.churn_count, 0)) OVER (ORDER BY m.month) as total_active,
+			COALESCE(s.pay_count, 0)
+		FROM months m
+		LEFT JOIN stats s ON m.month = s.month
+		ORDER BY m.month`
 	
 	rows, err := s.db.QueryContext(r.Context(), query)
 	if err != nil {
@@ -1157,17 +1171,28 @@ func (s *Server) GetStatsHandler(w http.ResponseWriter, r *http.Request) {
 		Value int    `json:"value"`
 	}
 
-	var stats []StatRow
+	type MultiStats struct {
+		NewMembers  []StatRow `json:"new_members"`
+		Churn       []StatRow `json:"churn"`
+		TotalActive []StatRow `json:"total_active"`
+		Payments    []StatRow `json:"payments"`
+	}
+
+	var res MultiStats
 	for rows.Next() {
-		var s StatRow
-		if err := rows.Scan(&s.Label, &s.Value); err != nil {
+		var month string
+		var n, c, t, p int
+		if err := rows.Scan(&month, &n, &c, &t, &p); err != nil {
 			continue
 		}
-		stats = append(stats, s)
+		res.NewMembers = append(res.NewMembers, StatRow{month, n})
+		res.Churn = append(res.Churn, StatRow{month, c})
+		res.TotalActive = append(res.TotalActive, StatRow{month, t})
+		res.Payments = append(res.Payments, StatRow{month, p})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	json.NewEncoder(w).Encode(res)
 }
 
 func (s *Server) GetFormsHandler(w http.ResponseWriter, r *http.Request) {

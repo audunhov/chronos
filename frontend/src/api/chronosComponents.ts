@@ -316,6 +316,31 @@ export const revokeOrganMember = (
     signal,
   });
 
+export type GetFormResponsesQueryParams = {
+  form_id: string;
+};
+
+export type GetFormResponsesError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetFormResponsesResponse = Schemas.FormResponse[];
+
+export type GetFormResponsesVariables = {
+  queryParams: GetFormResponsesQueryParams;
+};
+
+export const getFormResponses = (
+  variables: GetFormResponsesVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetFormResponsesResponse,
+    GetFormResponsesError,
+    undefined,
+    {},
+    GetFormResponsesQueryParams,
+    {}
+  >({ url: "/api/admin/form-responses", method: "get", ...variables, signal });
+
 export type GetMembersHeaders = {
   /**
    * Optional organization filter

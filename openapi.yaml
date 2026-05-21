@@ -297,6 +297,28 @@ paths:
         '200':
           description: Member removed
 
+  /api/admin/form-responses:
+    get:
+      operationId: getFormResponses
+      summary: Get responses for a specific form (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: form_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of form responses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FormResponse'
+
   /api/members:
     get:
       operationId: getMembers
@@ -812,6 +834,26 @@ components:
         schema:
           type: object
           additionalProperties: true
+
+    FormResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        form_id:
+          type: string
+        user_id:
+          type: string
+        user_name:
+          type: string
+        user_email:
+          type: string
+        answers:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
 
     FormResponseRequest:
       type: object

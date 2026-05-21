@@ -877,6 +877,64 @@ func (s *Server) ShredMemberHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) GetFormResponsesHandler(w http.ResponseWriter, r *http.Request) {
+	// Only admins can see form responses
+	role, _ := r.Context().Value(RoleKey).(string)
+	if role != "admin" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	formID := r.URL.Query().Get("form_id")
+	if formID == "" {
+		http.Error(w, "Missing form_id", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(formID); err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		SELECT fr.id, fr.form_id, fr.user_id, u.name as user_name, u.email as user_email, fr.answers, fr.created_at
+		FROM form_responses fr
+		JOIN users u ON fr.user_id = u.id
+		WHERE fr.form_id = $1
+		ORDER BY fr.created_at DESC`
+	
+	rows, err := s.db.QueryContext(r.Context(), query, formID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type FormResponse struct {
+		ID        string         `json:"id"`
+		FormID    string         `json:"form_id"`
+		UserID    string         `json:"user_id"`
+		UserName  string         `json:"user_name"`
+		UserEmail string         `json:"user_email"`
+		Answers   map[string]any `json:"answers"`
+		CreatedAt time.Time      `json:"created_at"`
+	}
+
+	var responses []FormResponse
+	for rows.Next() {
+		var resp FormResponse
+		var answersJSON []byte
+		if err := rows.Scan(&resp.ID, &resp.FormID, &resp.UserID, &resp.UserName, &resp.UserEmail, &answersJSON, &resp.CreatedAt); err != nil {
+			continue
+		}
+		json.Unmarshal(answersJSON, &resp.Answers)
+		responses = append(responses, resp)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responses)
+}
+
 func (s *Server) GetOrganizationHierarchyHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT id, name, parent_id, path::text, policy 

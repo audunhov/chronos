@@ -98,6 +98,7 @@ func main() {
 	apiMux.HandleFunc("/reports/stats", server.GetStatsHandler)
 	apiMux.HandleFunc("/audit/logs", server.GetAuditLogsHandler)
 	apiMux.HandleFunc("/forms", server.GetFormsHandler)
+	apiMux.HandleFunc("/admin/form-responses", server.GetFormResponsesHandler)
 	apiMux.HandleFunc("/commands/create-form", server.CreateFormHandler)
 	apiMux.HandleFunc("/commands/update-form", server.UpdateFormHandler)
 	apiMux.HandleFunc("/commands/submit-form", server.SubmitFormResponseHandler)

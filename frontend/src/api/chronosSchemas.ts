@@ -119,6 +119,21 @@ export type Form = {
   };
 };
 
+export type FormResponse = {
+  id?: string;
+  form_id?: string;
+  user_id?: string;
+  user_name?: string;
+  user_email?: string;
+  answers?: {
+    [key: string]: any;
+  };
+  /**
+   * @format date-time
+   */
+  created_at?: string;
+};
+
 export type FormResponseRequest = {
   form_id: string;
   answers: {

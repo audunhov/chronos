@@ -76,6 +76,7 @@ export const api = {
         if (orgId) queryParams.org_id = orgId;
         return chronos.getForms({ queryParams });
     },
+    getFormResponses: (formId: string) => chronos.getFormResponses({ queryParams: { form_id: formId } }),
     createForm: (data: any) => chronos.createForm({ body: data }),
     updateForm: (data: any) => chronos.updateForm({ body: data }),
     submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),

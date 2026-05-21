@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api } from '../services/api'
-import type { Form, EventReaction } from '../api'
+import type { Form, EventReaction, FormResponse } from '../api'
 import BCard from './base/BCard.vue'
 import BButton from './base/BButton.vue'
 import BInput from './base/BInput.vue'
@@ -26,6 +26,10 @@ const newFormOrg = ref('')
 const newFormFields = ref<{ name: string, label: string, type: 'text' | 'textarea' | 'select', options: string }[]>([])
 const organizations = ref<{ id: string, name: string }[]>([])
 const dependentReactions = ref<EventReaction[]>([])
+
+// Response Viewer state
+const viewingResponsesFor = ref<Form | null>(null)
+const responses = ref<FormResponse[]>([])
 
 const addField = () => {
     newFormFields.value.push({ name: '', label: '', type: 'text', options: '' })
@@ -114,6 +118,19 @@ const fetchOrgs = async () => {
     }
 }
 
+const fetchResponses = async (form: Form) => {
+    loading.value = true
+    try {
+        const data = await api.getFormResponses(form.id!)
+        responses.value = Array.isArray(data) ? data : []
+        viewingResponsesFor.value = form
+    } catch (e) {
+        console.error(e)
+    } finally {
+        loading.value = false
+    }
+}
+
 const startForm = (form: Form) => {
     selectedForm.value = form
     const initialAnswers: Record<string, any> = {}
@@ -152,7 +169,7 @@ onMounted(() => {
                 <h2 class="text-4xl font-black uppercase tracking-tighter italic">Undersøkelser</h2>
                 <p class="text-xs font-bold uppercase text-gray-500">Datainnsamling og tilbakemeldinger</p>
             </div>
-            <BButton v-if="props.isAdmin && !showCreator" @click="showCreator = true" variant="primary" class="text-xs py-2">
+            <BButton v-if="props.isAdmin && !showCreator && !viewingResponsesFor" @click="showCreator = true" variant="primary" class="text-xs py-2">
                 + NYTT SKJEMA
             </BButton>
         </div>
@@ -246,12 +263,15 @@ onMounted(() => {
         </div>
 
         <!-- Forms List -->
-        <div v-if="!selectedForm && !showCreator" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div v-if="!selectedForm && !showCreator && !viewingResponsesFor" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <BCard v-for="f in forms" :key="f.id" class="flex flex-col h-full hover:bg-yellow-50 group">
                 <div class="flex-1">
                     <div class="flex justify-between items-start mb-4">
                         <span class="bg-black text-white text-[10px] font-black px-2 py-1 uppercase">{{ f.org_id ? f.org_id.split('-')[0] : '' }}</span>
-                        <BButton v-if="props.isAdmin" @click="startEdit(f)" variant="ghost" class="text-[8px] py-1 border-2 opacity-0 group-hover:opacity-100 transition-opacity">REDIGER</BButton>
+                        <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <BButton v-if="props.isAdmin" @click="fetchResponses(f)" variant="ghost" class="text-[8px] py-1 border-2 font-black italic">SVAR</BButton>
+                            <BButton v-if="props.isAdmin" @click="startEdit(f)" variant="ghost" class="text-[8px] py-1 border-2 font-black italic">REDIGER</BButton>
+                        </div>
                     </div>
                     <h3 class="font-black text-2xl mb-6 uppercase tracking-tighter leading-none">{{ f.title }}</h3>
                 </div>
@@ -263,6 +283,50 @@ onMounted(() => {
             <div v-if="forms.length === 0 && !loading" class="col-span-full py-32 text-center border-8 border-black border-dashed bg-white">
                 <p class="text-gray-300 text-6xl font-black uppercase mb-4 italic opacity-20 underline">Tomt ark</p>
                 <p class="text-gray-400 font-bold uppercase tracking-widest">Ingen aktive undersøkelser i databasen.</p>
+            </div>
+        </div>
+
+        <!-- Form Responses View -->
+        <div v-if="viewingResponsesFor" class="space-y-8 animate-in fade-in">
+            <div class="flex justify-between items-center border-b-4 border-black pb-4">
+                <div>
+                    <h3 class="text-3xl font-black uppercase italic tracking-tighter leading-none">{{ viewingResponsesFor.title }}</h3>
+                    <p class="text-xs font-bold uppercase text-gray-400 mt-2">Innsendte svar fra medlemmer</p>
+                </div>
+                <BButton @click="viewingResponsesFor = null" variant="secondary" class="text-xs">← TILBAKE</BButton>
+            </div>
+
+            <div class="overflow-x-auto border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+                <table class="brutalist-table bg-white">
+                    <thead>
+                        <tr>
+                            <th class="brutalist-th">Medlem</th>
+                            <th v-for="field in (viewingResponsesFor.schema as any).fields" :key="field.name" class="brutalist-th">
+                                {{ field.label }}
+                            </th>
+                            <th class="brutalist-th">Innsendt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="resp in responses" :key="resp.id" class="hover:bg-yellow-50">
+                            <td class="brutalist-td">
+                                <div class="font-black uppercase text-xs">{{ resp.user_name }}</div>
+                                <div class="text-[8px] font-bold text-gray-400 font-mono">{{ resp.user_email }}</div>
+                            </td>
+                            <td v-for="field in (viewingResponsesFor.schema as any).fields" :key="field.name" class="brutalist-td italic font-bold text-xs">
+                                {{ resp.answers?.[field.name] || '-' }}
+                            </td>
+                            <td class="brutalist-td text-[10px] font-mono whitespace-nowrap">
+                                {{ new Date(resp.created_at || '').toLocaleDateString() }}
+                            </td>
+                        </tr>
+                        <tr v-if="responses.length === 0">
+                            <td :colspan="(viewingResponsesFor.schema as any).fields.length + 2" class="brutalist-td text-center py-20 font-black uppercase text-gray-300 italic text-2xl opacity-20">
+                                Ingen svar mottatt ennå
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 

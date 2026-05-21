@@ -35,7 +35,10 @@ const fetchMembers = async (silent = false) => {
 const fetchOrgs = async () => {
   try {
     const data = await api.getOrganizations()
-    organizations.value = Array.isArray(data) ? data : []
+    organizations.value = Array.isArray(data) ? (data as any).map((d: any) => {
+        if (typeof d === 'string') return { id: d, name: d }
+        return d
+    }) : []
   } catch (e) {
     console.error(e)
   }
@@ -93,25 +96,25 @@ onMounted(() => {
                     <td colspan="6" class="brutalist-td animate-pulse bg-gray-50 h-12"></td>
                 </tr>
                 <tr v-else v-for="m in members" :key="m.id" 
-                    @click="inspectUser(m.user_id)"
+                    @click="inspectUser(m.id!)"
                     class="hover:bg-yellow-50 transition-colors cursor-pointer group"
                 >
                 <td class="brutalist-td">
                     <div class="font-black uppercase tracking-tighter group-hover:text-blue-600 transition-colors">{{ m.name }}</div>
                     <div class="text-[10px] font-bold text-gray-400">{{ m.email }}</div>
                 </td>
-                <td class="brutalist-td"><BBadge class="bg-gray-100">{{ m.org_id.split('-')[0] }}</BBadge></td>
+                <td class="brutalist-td"><BBadge class="bg-gray-100">{{ (m.org_id || '').split('-')[0] }}</BBadge></td>
                 <td class="brutalist-td">
-                    <BBadge :class="m.status === 'ACTIVE' ? 'bg-green-400' : 'bg-red-400'">{{ m.status }}</BBadge>
+                    <BBadge :variant="m.status === 'ACTIVE' ? 'success' : 'danger'">{{ m.status }}</BBadge>
                 </td>
-                <td class="brutalist-td font-bold uppercase text-xs">{{ m.role }}</td>
-                <td class="brutalist-td font-black" :class="m.balance < 0 ? 'text-red-600' : 'text-green-600'">
-                    {{ (m.balance / 100).toFixed(2) }} kr
+                <td class="brutalist-td font-bold uppercase text-xs">MEMBER</td>
+                <td class="brutalist-td font-black" :class="((m.balance || 0) < 0) ? 'text-red-600' : 'text-green-600'">
+                    {{ ((m.balance || 0) / 100).toFixed(2) }} kr
                 </td>
                 <td class="brutalist-td text-right">
                     <BButton 
                         v-if="m.status !== 'SHREDDED'"
-                        @click.stop="shredMember(m.id)" 
+                        @click.stop="shredMember(m.id!)" 
                         variant="danger"
                         class="text-[8px] py-1 px-2 uppercase"
                     >

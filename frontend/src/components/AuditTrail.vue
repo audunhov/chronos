@@ -61,11 +61,11 @@ onMounted(fetchLogs)
                     </tr>
                     <tr v-else v-for="entry in logs" :key="entry.id" class="hover:bg-yellow-50 transition-colors">
                         <td class="p-4 text-[10px] font-bold font-mono">
-                            {{ formatDate(entry.created_at) }}
+                            {{ formatDate(entry.created_at || '') }}
                         </td>
                         <td class="p-4">
                             <BBadge class="bg-indigo-600 text-white border-none">{{ entry.action }}</BBadge>
-                            <div class="text-[8px] mt-1 font-mono text-gray-400">CID: {{ entry.correlation_id.split('-')[0] }}...</div>
+                            <div class="text-[8px] mt-1 font-mono text-gray-400">CID: {{ (entry.correlation_id || '').split('-')[0] }}...</div>
                         </td>
                         <td class="p-4 font-black text-sm italic">
                             {{ entry.actor_email || 'ANONYM' }}

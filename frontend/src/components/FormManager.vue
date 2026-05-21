@@ -105,7 +105,10 @@ const fetchForms = async () => {
 const fetchOrgs = async () => {
     try {
         const data = await api.getOrganizations()
-        organizations.value = Array.isArray(data) ? data : []
+        organizations.value = Array.isArray(data) ? (data as any).map((d: any) => {
+            if (typeof d === 'string') return { id: d, name: d }
+            return d
+        }) : []
     } catch (e) {
         console.error(e)
     }

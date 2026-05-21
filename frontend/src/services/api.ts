@@ -48,17 +48,20 @@ export const api = {
         return Array.isArray(data) ? data : [];
     },
     getOrganizationHierarchy: () => chronos.getOrganizationHierarchy(),
-    createOrganization: (data: any) => chronos.createOrganization({ body: data }),
-    deleteOrganization: (id: string) => chronos.deleteOrganization({ queryParams: { id } }),
-    
+    createOrganization: (data: any) => (chronos as any).createOrganization({ body: data }),
+    deleteOrganization: (id: string) => (chronos as any).deleteOrganization({ queryParams: { id } }),
+
     // Admin Tools
     getTreasuryReport: () => chronos.getTreasuryReport(),
     getStats: () => chronos.getStats(),
-    getAuditLogs: (orgId?: string) => chronos.getAuditLogs({ queryParams: { org_id: orgId } }),
+    getAuditLogs: (orgId?: string, actorId?: string, targetId?: string) => 
+        chronos.getAuditLogs({ queryParams: { org_id: orgId, actor_id: actorId, target_id: targetId } }),
 
     // Reactions (Pipelines)
-    getReactions: (orgId: string) => chronos.getReactions({ queryParams: { org_id: orgId } }),
+    getReactions: (orgId: string, triggerAggregateId?: string) => 
+        chronos.getReactions({ queryParams: { org_id: orgId, trigger_aggregate_id: triggerAggregateId } }),
     createReaction: (data: any) => chronos.createReaction({ body: data }),
+
 
     // Organs
     getOrgans: (orgId: string) => chronos.getOrgans({ queryParams: { org_id: orgId } }),
@@ -74,6 +77,7 @@ export const api = {
         return chronos.getForms({ queryParams });
     },
     createForm: (data: any) => chronos.createForm({ body: data }),
+    updateForm: (data: any) => chronos.updateForm({ body: data }),
     submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),
     
     // Member Management

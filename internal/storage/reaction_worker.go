@@ -26,6 +26,7 @@ func NewReactionWorker(db *sql.DB) *ReactionWorker {
 			"SendEmail":      w.opSendEmail,
 			"IfThen":         w.opIfThen,
 			"Filter":         w.opFilter,
+			"ListFilter":     w.opListFilter,
 			"RegisterMember": w.opRegisterMember,
 			"CreateForm":     w.opCreateForm,
 		},
@@ -59,6 +60,25 @@ func (w *ReactionWorker) opFilter(inputs map[string]any) (map[string]any, string
 		return nil, "default", nil
 	}
 	return nil, "default", fmt.Errorf("filtered")
+}
+
+func (w *ReactionWorker) opListFilter(inputs map[string]any) (map[string]any, string, error) {
+	list, ok := inputs["list"].([]any)
+	if !ok {
+		return nil, "default", fmt.Errorf("input 'list' is not an array")
+	}
+
+	operator, _ := inputs["operator"].(string)
+	value := inputs["value"]
+
+	var filtered []any
+	for _, item := range list {
+		if domain.EvaluateCondition(item, operator, value) {
+			filtered = append(filtered, item)
+		}
+	}
+
+	return map[string]any{"filtered_list": filtered}, "default", nil
 }
 
 func (w *ReactionWorker) opFindOrg(inputs map[string]any) (map[string]any, string, error) {

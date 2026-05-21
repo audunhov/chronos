@@ -25,10 +25,15 @@ const route = useRoute()
 const router = useRouter()
 const pipelineId = route.params.id as string
 
-const { nodes, edges, onConnect, addEdges, addNodes, toObject } = useVueFlow()
+const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, toObject } = useVueFlow()
 
 const loading = ref(false)
 const reaction = ref<any>(null)
+
+// Support removing edges by clicking them and pressing Backspace/Delete
+const onEdgeClick = (event: any) => {
+    // Vue Flow handles basic selection, we'll implement a delete button or use standard key listener
+}
 
 onConnect((params) => {
     addEdges([params])
@@ -59,28 +64,16 @@ const fetchPipeline = async () => {
         
         if (r && r.config) {
             reaction.value = r
-            if (r.config.nodes) nodes.value = r.config.nodes
-            if (r.config.edges) edges.value = r.config.edges
+            // Map legacy pos_x/y if they exist to the new structure
+            const mappedNodes = (r.config.nodes || []).map((n: any) => ({
+                ...n,
+                position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 }
+            }))
+            nodes.value = mappedNodes
+            edges.value = r.config.edges || []
             
-            // Set initial outputs from map
-            const triggerNode = nodes.value.find(n => n.type === 'trigger')
-            if (triggerNode && r.trigger_event && (r.trigger_event in TRIGGER_VAR_MAP)) {
-                triggerNode.data.outputs = TRIGGER_VAR_MAP[r.trigger_event as keyof typeof TRIGGER_VAR_MAP]
-            }
-
-            // Dynamic Form Schema logic
-            if (r.trigger_event === 'FormResponseSubmitted' && r.trigger_aggregate_id) {
-                const formsData = await api.getForms()
-                const form = Array.isArray(formsData) ? formsData.find(f => f.id === r.trigger_aggregate_id) : null
-                
-                if (form && form.schema && (form.schema as any).fields) {
-                    const dynamicOutputs = [
-                        'form_id', 'user_id', 'timestamp',
-                        ...(form.schema as any).fields.map((f: any) => `ans_${f.name}`)
-                    ]
-                    const triggerNode = nodes.value.find(n => n.type === 'trigger')
-                    if (triggerNode) triggerNode.data.outputs = dynamicOutputs
-                }
+            if (r.trigger_event) {
+                updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
             }
         }
     } catch (e) {
@@ -90,12 +83,39 @@ const fetchPipeline = async () => {
     }
 }
 
+const updateTriggerOutputs = async (event: string, aggregateId?: string) => {
+    const triggerNode = nodes.value.find(n => n.type === 'trigger')
+    if (!triggerNode) return
+
+    let dynamicOutputs = TRIGGER_VAR_MAP[event] || ['timestamp']
+    
+    if (event === 'FormResponseSubmitted' && aggregateId) {
+        try {
+            const formsData = await api.getForms()
+            const form = Array.isArray(formsData) ? formsData.find(f => f.id === aggregateId) : null
+            if (form && form.schema && (form.schema as any).fields) {
+                dynamicOutputs = [
+                    ...dynamicOutputs,
+                    ...(form.schema as any).fields.map((f: any) => `ans_${f.name}`)
+                ]
+            }
+        } catch (e) { console.error(e) }
+    }
+    
+    triggerNode.data = {
+        ...triggerNode.data,
+        event,
+        outputs: dynamicOutputs,
+        availableEvents: Object.keys(TRIGGER_VAR_MAP)
+    }
+}
+
 const addActionNode = (type: string) => {
     const def = ACTION_DEFS[type]
     const newNode: Node = {
-        id: `node_${nodes.value.length + 1}`,
+        id: `node_${Date.now()}`,
         type: 'action',
-        position: { x: Math.random() * 400, y: Math.random() * 400 },
+        position: { x: 400, y: 100 },
         data: {
             label: type,
             inputs: def?.inputs || [],
@@ -105,12 +125,18 @@ const addActionNode = (type: string) => {
     addNodes([newNode])
 }
 
-const addLogicNode = (type: 'if' | 'filter') => {
+const addLogicNode = (type: 'if' | 'filter' | 'list_filter') => {
     const newNode: Node = {
-        id: `node_${nodes.value.length + 1}`,
+        id: `node_${Date.now()}`,
         type: 'logic',
-        position: { x: Math.random() * 400, y: Math.random() * 400 },
-        data: { type, inputs: ['v1', 'v2', 'operator'] }
+        position: { x: 400, y: 100 },
+        data: { 
+            type, 
+            operator: '==', 
+            value1: type === 'list_filter' ? 'trigger.list' : '', 
+            value2: '',
+            inputs: type === 'list_filter' ? ['list', 'operator', 'value'] : ['v1', 'v2', 'operator']
+        }
     }
     addNodes([newNode])
 }
@@ -118,10 +144,9 @@ const addLogicNode = (type: 'if' | 'filter') => {
 const save = async () => {
     const flow: any = toObject()
     
-    // Preserve interval for timed triggers
-    if (reaction.value?.trigger_event === 'TimedSchedule') {
-        flow.interval = reaction.value.config?.interval || 'daily'
-    }
+    // Synkroniser trigger-event fra nodedata tilbake til toppnivå reaksjon hvis endret
+    const triggerNode = nodes.value.find(n => n.type === 'trigger')
+    const finalTriggerEvent = triggerNode?.data.event || reaction.value?.trigger_event
 
     try {
         await api.updateReaction(pipelineId, flow)
@@ -131,6 +156,11 @@ const save = async () => {
     }
 }
 
+const deleteSelected = () => {
+    const selectedEdges = edges.value.filter(e => e.selected)
+    removeEdges(selectedEdges)
+}
+
 onMounted(async () => {
     await fetchPipeline()
     if (nodes.value.length === 0) {
@@ -138,14 +168,18 @@ onMounted(async () => {
             id: 'trigger', 
             type: 'trigger', 
             position: { x: 50, y: 50 },
-            data: { event: 'New Event', outputs: ['id', 'timestamp'] }
+            data: { 
+                event: 'MembershipCreated', 
+                outputs: TRIGGER_VAR_MAP['MembershipCreated'],
+                availableEvents: Object.keys(TRIGGER_VAR_MAP)
+            }
         }])
     }
 })
 </script>
 
 <template>
-  <div class="h-screen w-screen bg-orange-50 flex flex-col overflow-hidden font-mono text-black">
+  <div class="h-screen w-screen bg-orange-50 flex flex-col overflow-hidden font-mono text-black" @keydown.backspace="deleteSelected" @keydown.delete="deleteSelected" tabindex="0">
     <!-- Navbar -->
     <header class="bg-black text-white p-4 flex justify-between items-center border-b-8 border-black z-50">
         <div class="flex items-center gap-6">
@@ -154,7 +188,7 @@ onMounted(async () => {
             <h1 class="text-3xl font-black uppercase italic tracking-tighter leading-none">Visual Pipeline Builder</h1>
         </div>
         <div class="flex gap-4">
-            <BButton @click="save" variant="primary" class="text-xs py-2 px-10 shadow-[4px_4px_0px_0px_white]">LAGRE ENDRINGER</BButton>
+            <BButton @click="save" variant="primary" class="text-xs py-2 px-10 shadow-[4px_4px_0px_0px_white]">PUBLISER ENDRINGER</BButton>
         </div>
     </header>
 
@@ -164,8 +198,9 @@ onMounted(async () => {
             <section class="space-y-4">
                 <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Logikk</h4>
                 <div class="grid grid-cols-2 gap-2">
-                    <button @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200">IF / THEN</button>
-                    <button @click="addLogicNode('filter')" class="brutalist-btn bg-orange-100 text-[10px] p-2 hover:bg-orange-200">FILTER</button>
+                    <button @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 uppercase font-black italic">IF / THEN</button>
+                    <button @click="addLogicNode('filter')" class="brutalist-btn bg-orange-100 text-[10px] p-2 hover:bg-orange-200 uppercase font-black italic">FILTER (STOP)</button>
+                    <button @click="addLogicNode('list_filter')" class="brutalist-btn bg-blue-100 text-[10px] p-2 hover:bg-blue-200 col-span-2 uppercase font-black italic">FILTER (LIST)</button>
                 </div>
             </section>
 
@@ -182,16 +217,18 @@ onMounted(async () => {
             </section>
 
             <div class="brutalist-card bg-black text-white p-4 !shadow-none italic text-[8px] leading-relaxed">
-                STATUS: Koble utganger (høyre) til innganger (venstre). Endringer i form-skjema oppdaterer Trigger-noden automatisk.
+                STATUS: Markér en kobling og trykk [Backspace] for å slette. <br><br>
+                TIPS: IF-noden kan referere variabler ved å skrive f.eks. 'trigger.user_id' i verdi-feltet.
             </div>
         </aside>
 
         <!-- Canvas -->
         <main class="flex-1 relative bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:20px_20px]">
             <VueFlow 
-                :nodes="nodes" 
-                :edges="edges" 
+                v-model:nodes="nodes" 
+                v-model:edges="edges" 
                 :node-types="nodeTypes"
+                @edge-click="onEdgeClick"
                 fit-view-on-init
                 class="brutalist-flow"
             >
@@ -212,6 +249,9 @@ onMounted(async () => {
 .brutalist-flow .vue-flow__edge-path {
     stroke: black !important;
     stroke-width: 6 !important;
+}
+.brutalist-flow .vue-flow__edge.selected .vue-flow__edge-path {
+    stroke: #f87171 !important; /* Red 400 */
 }
 .brutalist-flow .vue-flow__connection-path {
     stroke: black !important;

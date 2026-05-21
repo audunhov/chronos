@@ -18,12 +18,14 @@ type NodeInput struct {
 }
 
 type PipelineNode struct {
-	ID     string               `json:"id"`
-	Type   string               `json:"type"`
-	Inputs map[string]NodeInput `json:"inputs"`
-	// UI Metadata (for Vue Flow)
-	PositionX float64 `json:"pos_x"`
-	PositionY float64 `json:"pos_y"`
+	ID       string               `json:"id"`
+	Type     string               `json:"type"`
+	Inputs   map[string]NodeInput `json:"inputs"`
+	Data     map[string]any       `json:"data"` // For custom node state
+	Position struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+	} `json:"position"`
 }
 
 type PipelineEdge struct {
@@ -72,14 +74,22 @@ func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string
 		// 1. Resolve inputs
 		resolvedInputs := make(map[string]any)
 		
-		// 1a. Start with static values
+		// 1a. Start with static values from Inputs
 		for key, input := range node.Inputs {
 			if input.Mode == InputModeStatic {
 				resolvedInputs[key] = input.Value
 			}
 		}
 
-		// 1b. Override with connected edge values
+		// 1b. Add values from Data (custom node state) as fallback/direct inputs
+		for key, val := range node.Data {
+			// Only add if not already present from static inputs
+			if _, ok := resolvedInputs[key]; !ok {
+				resolvedInputs[key] = val
+			}
+		}
+
+		// 1c. Override with connected edge values
 		for _, edge := range config.Edges {
 			if edge.Target == node.ID {
 				sourceResults, ok := results[edge.Source]

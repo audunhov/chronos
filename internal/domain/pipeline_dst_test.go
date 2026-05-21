@@ -106,7 +106,6 @@ func simulateRandomPipeline(t *testing.T, seed int64) {
 				Source: s2.nodeID, SourcePort: s2.port,
 				Target: nodeID, TargetPort: "v2",
 			})
-			// IfThen has no outputs, but has true/false ports (not yet used for execution path pruning in engine)
 		}
 	}
 

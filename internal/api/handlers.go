@@ -457,17 +457,21 @@ func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	configJSON, _ := json.Marshal(req.Config)
-	_, err := s.db.ExecContext(r.Context(), `
+	var newID string
+	err := s.db.QueryRowContext(r.Context(), `
 		INSERT INTO event_reactions (org_id, trigger_event, trigger_aggregate_id, action_type, config)
-		VALUES ($1, $2, $3, $4, $5)`,
-		req.OrgID, req.TriggerEvent, sql.NullString{String: func() string { if req.TriggerAggregateID != nil { return *req.TriggerAggregateID }; return "" }(), Valid: req.TriggerAggregateID != nil}, req.ActionType, configJSON)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`,
+		req.OrgID, req.TriggerEvent, sql.NullString{String: func() string { if req.TriggerAggregateID != nil { return *req.TriggerAggregateID }; return "" }(), Valid: req.TriggerAggregateID != nil}, req.ActionType, configJSON).Scan(&newID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"id": newID})
 }
 func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")

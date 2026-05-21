@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '../services/api'
 import BButton from './base/BButton.vue'
 import BCard from './base/BCard.vue'
@@ -11,6 +12,7 @@ const props = defineProps<{
     orgs: { id: string, name: string }[]
 }>()
 
+const router = useRouter()
 const selectedOrg = ref('')
 const triggerAggregateID = ref('')
 const forms = ref<any[]>([])
@@ -213,6 +215,23 @@ const createReaction = async () => {
     }
 }
 
+const createVisualPipeline = async () => {
+    try {
+        const res = await api.createReaction({
+            org_id: selectedOrg.value,
+            trigger_event: 'MembershipCreated',
+            action_type: 'PIPELINE_DAG',
+            config: { nodes: [], edges: [] }
+        })
+        // @ts-ignore
+        if (res && res.id) {
+            router.push(`/admin/pipelines/edit/${res.id}?org_id=${selectedOrg.value}`)
+        }
+    } catch (e: any) {
+        alert(e.message)
+    }
+}
+
 watch(selectedOrg, () => {
     fetchReactions()
     fetchForms()
@@ -236,7 +255,10 @@ onMounted(() => {
             <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="bg-black text-white border-white min-w-[300px]">
                 <option v-for="org in orgs" :key="org.id" :value="org.id">{{ org.name }}</option>
             </BSelect>
-            <BButton @click="showCreate = true" variant="primary" class="italic text-xs py-2">+ NY PIPELINE</BButton>
+            <div class="flex gap-2">
+                <BButton @click="showCreate = true" variant="primary" class="italic text-xs py-2">+ NY PIPELINE</BButton>
+                <BButton @click="createVisualPipeline" variant="success" class="italic text-xs py-2 bg-green-500">DESIGN VISUELT (BETA)</BButton>
+            </div>
         </div>
 
         <div v-if="showCreate" class="space-y-6">
@@ -384,7 +406,7 @@ onMounted(() => {
                         </div>
                     </div>
                     <div class="flex gap-4 items-center">
-                        <router-link :to="'/admin/pipelines/edit/' + r.id">
+                        <router-link :to="'/admin/pipelines/edit/' + r.id + '?org_id=' + selectedOrg">
                             <BButton variant="primary" class="text-[10px] py-1 px-4 italic font-black underline">ÅPNE VISUELL EDITOR</BButton>
                         </router-link>
                         <BBadge class="bg-black text-white px-4">{{ r.action_type }}</BBadge>

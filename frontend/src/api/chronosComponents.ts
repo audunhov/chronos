@@ -176,6 +176,10 @@ export const getReactions = (
 
 export type CreateReactionError = Fetcher.ErrorWrapper<undefined>;
 
+export type CreateReactionResponse = {
+  id?: string;
+};
+
 export type CreateReactionVariables = {
   body: Schemas.CreateReactionRequest;
 };
@@ -185,7 +189,7 @@ export const createReaction = (
   signal?: AbortSignal,
 ) =>
   chronosFetch<
-    undefined,
+    CreateReactionResponse,
     CreateReactionError,
     Schemas.CreateReactionRequest,
     {},

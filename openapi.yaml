@@ -188,6 +188,13 @@ paths:
       responses:
         '201':
           description: Reaction created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
     put:
       operationId: updateReaction
       summary: Update an event reaction configuration

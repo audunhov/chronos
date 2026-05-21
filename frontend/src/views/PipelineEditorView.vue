@@ -28,10 +28,20 @@ const pipelineId = route.params.id as string
 const { nodes, edges, onConnect, addEdges, addNodes, toObject } = useVueFlow()
 
 const loading = ref(false)
+const reaction = ref<any>(null)
 
 onConnect((params) => {
     addEdges([params])
 })
+
+const TRIGGER_VAR_MAP: Record<string, string[]> = {
+    MembershipCreated: ['user_id', 'org_id', 'role', 'timestamp'],
+    FeeGenerated: ['id', 'amount', 'period', 'timestamp'],
+    FormResponseSubmitted: ['form_id', 'user_id', 'timestamp'],
+    OrganizationCreated: ['id', 'name', 'path', 'timestamp'],
+    OrganCreated: ['id', 'org_id', 'name', 'timestamp'],
+    TimedSchedule: ['timestamp', 'source'],
+}
 
 const ACTION_DEFS: Record<string, { inputs: string[], outputs: string[] }> = {
     FindOrg: { inputs: ['start_org_id', 'relation'], outputs: ['org_id', 'name'] },
@@ -48,9 +58,16 @@ const fetchPipeline = async () => {
         const r = Array.isArray(data) ? data.find(item => item.id === pipelineId) : null
         
         if (r && r.config) {
+            reaction.value = r
             if (r.config.nodes) nodes.value = r.config.nodes
             if (r.config.edges) edges.value = r.config.edges
             
+            // Set initial outputs from map
+            const triggerNode = nodes.value.find(n => n.type === 'trigger')
+            if (triggerNode && r.trigger_event && (r.trigger_event in TRIGGER_VAR_MAP)) {
+                triggerNode.data.outputs = TRIGGER_VAR_MAP[r.trigger_event as keyof typeof TRIGGER_VAR_MAP]
+            }
+
             // Dynamic Form Schema logic
             if (r.trigger_event === 'FormResponseSubmitted' && r.trigger_aggregate_id) {
                 const formsData = await api.getForms()
@@ -99,7 +116,13 @@ const addLogicNode = (type: 'if' | 'filter') => {
 }
 
 const save = async () => {
-    const flow = toObject()
+    const flow: any = toObject()
+    
+    // Preserve interval for timed triggers
+    if (reaction.value?.trigger_event === 'TimedSchedule') {
+        flow.interval = reaction.value.config?.interval || 'daily'
+    }
+
     try {
         await api.updateReaction(pipelineId, flow)
         alert('Pipeline lagret og publisert!')

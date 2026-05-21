@@ -40,6 +40,11 @@ func main() {
 	go reactionWorker.Start(ctx)
 	log.Println("Reaction worker started")
 
+	// Start Scheduler Worker
+	schedulerWorker := storage.NewSchedulerWorker(db, reactionWorker.GetExecutor())
+	go schedulerWorker.Start(ctx)
+	log.Println("Scheduler worker started")
+
 	// Start Payment Worker
 	paymentWorker := storage.NewPaymentWorker(db)
 	go paymentWorker.Start(ctx)

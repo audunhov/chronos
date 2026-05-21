@@ -1196,7 +1196,7 @@ func (s *Server) UpdateReactionHandler(w http.ResponseWriter, r *http.Request) {
 		ID     string         `json:"id"`
 		Config map[string]any `json:"config"`
 	}
-	if (err := json.NewDecoder(r.Body).Decode(&req)); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}

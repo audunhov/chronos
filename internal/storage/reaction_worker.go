@@ -33,6 +33,10 @@ func NewReactionWorker(db *sql.DB) *ReactionWorker {
 	return w
 }
 
+func (w *ReactionWorker) GetExecutor() *domain.PipelineExecutor {
+	return w.executor
+}
+
 // --- Production Operations ---
 
 func (w *ReactionWorker) opIfThen(inputs map[string]any) (map[string]any, string, error) {

@@ -20,6 +20,7 @@ const showCreate = ref(false)
 
 // --- DAG PIPELINE BUILDER STATE ---
 const triggerEvent = ref('MembershipCreated')
+const triggerInterval = ref('daily')
 
 type NodeType = 'FindOrg' | 'FindOrgan' | 'FindRole' | 'Template' | 'SendEmail' | 'CreateForm' | 'RegisterMember'
 
@@ -112,6 +113,10 @@ const TRIGGER_OUTPUTS_BY_EVENT: Record<string, Record<string, string>> = {
         user_id: 'Bruker-ID',
         answers: 'Svar (Objekt)',
         timestamp: 'Tidspunkt'
+    },
+    TimedSchedule: {
+        timestamp: 'Nåværende Tid',
+        source: 'Trigger-Kilde'
     }
 }
 
@@ -195,6 +200,7 @@ const createReaction = async () => {
             trigger_aggregate_id: triggerAggregateID.value || undefined,
             action_type: 'PIPELINE_DAG',
             config: {
+                interval: triggerEvent.value === 'TimedSchedule' ? triggerInterval.value : undefined,
                 nodes: pipelineNodes.value
             }
         })
@@ -254,6 +260,17 @@ onMounted(() => {
                                 <option value="OrganCreated">Nytt Organ Opprettet</option>
                                 <option value="FormCreated">Nytt Skjema Publisert</option>
                                 <option value="FormResponseSubmitted">Skjema Besvart</option>
+                                <option value="TimedSchedule">Planlagt (Daglig/Ukentlig)</option>
+                            </BSelect>
+
+                            <BSelect 
+                                v-if="triggerEvent === 'TimedSchedule'" 
+                                v-model="triggerInterval" 
+                                label="Velg intervall:"
+                            >
+                                <option value="daily">Hver Dag (24t)</option>
+                                <option value="weekly">Hver Uke (7 dager)</option>
+                                <option value="monthly">Hver Måned (30 dager)</option>
                             </BSelect>
 
                             <BSelect 
@@ -361,6 +378,9 @@ onMounted(() => {
                         </div>
                         <div v-if="r.trigger_aggregate_id" class="text-[10px] font-mono text-gray-500">
                             ID-FILTER: {{ r.trigger_aggregate_id }}
+                        </div>
+                        <div v-if="r.trigger_event === 'TimedSchedule'" class="text-[10px] font-black uppercase text-orange-600 bg-orange-100 px-2 border-2 border-orange-600 inline-block">
+                            INTERVALL: {{ r.config?.interval || 'daily' }}
                         </div>
                     </div>
                     <div class="flex gap-4 items-center">

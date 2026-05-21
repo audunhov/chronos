@@ -900,24 +900,30 @@ func (s *Server) GetAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
 		ID            string         `json:"id"`
 		CorrelationID string         `json:"correlation_id"`
 		Action        string         `json:"action"`
-		TargetID      sql.NullString `json:"target_id"`
+		TargetID      *string        `json:"target_id"`
 		Detail        map[string]any `json:"detail"`
 		IP            string         `json:"ip_address"`
 		UserAgent     string         `json:"user_agent"`
 		CreatedAt     time.Time      `json:"created_at"`
-		ActorEmail    sql.NullString `json:"actor_email"`
-		OrgName       sql.NullString `json:"org_name"`
+		ActorEmail    *string        `json:"actor_email"`
+		OrgName       *string        `json:"org_name"`
 	}
 
 	var logs []AuditEntry
 	for rows.Next() {
 		var l AuditEntry
+		var targetID, actorEmail, orgName sql.NullString
 		var detailJSON []byte
-		if err := rows.Scan(&l.ID, &l.CorrelationID, &l.Action, &l.TargetID, &detailJSON, &l.IP, &l.UserAgent, &l.CreatedAt, &l.ActorEmail, &l.OrgName); err != nil {
+		if err := rows.Scan(&l.ID, &l.CorrelationID, &l.Action, &targetID, &detailJSON, &l.IP, &l.UserAgent, &l.CreatedAt, &actorEmail, &orgName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		json.Unmarshal(detailJSON, &l.Detail)
+		
+		if targetID.Valid { l.TargetID = &targetID.String }
+		if actorEmail.Valid { l.ActorEmail = &actorEmail.String }
+		if orgName.Valid { l.OrgName = &orgName.String }
+
 		logs = append(logs, l)
 	}
 

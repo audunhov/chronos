@@ -96,7 +96,7 @@ onMounted(() => {
                     <td colspan="6" class="brutalist-td animate-pulse bg-gray-50 h-12"></td>
                 </tr>
                 <tr v-else v-for="m in members" :key="m.id" 
-                    @click="inspectUser(m.id!)"
+                    @click="inspectUser(m.user_id!)"
                     class="hover:bg-yellow-50 transition-colors cursor-pointer group"
                 >
                 <td class="brutalist-td">

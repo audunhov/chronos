@@ -174,6 +174,7 @@ export type AuditLogEntry = {
 
 export type Member = {
   id?: string;
+  user_id?: string;
   org_id?: string;
   name?: string;
   email?: string;

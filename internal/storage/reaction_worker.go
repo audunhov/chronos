@@ -38,6 +38,7 @@ func (w *ReactionWorker) GetOperations(db domain.DBExecutor) map[string]func(inp
 		"Filter":         func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opFilter(in)) },
 		"ListFilter":     func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opListFilter(in)) },
 		"ForEach":        w.opForEach,
+		"Collect":        w.opCollect,
 		"RegisterMember": func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opRegisterMemberTx(db, in)) },
 		"CreateForm":     func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opCreateFormTx(db, in)) },
 	}
@@ -70,6 +71,12 @@ func (w *ReactionWorker) opForEach(inputs map[string]any) ([]map[string]any, str
 	}
 
 	return results, "default", nil
+}
+
+func (w *ReactionWorker) opCollect(inputs map[string]any) ([]map[string]any, string, error) {
+	val := inputs["value"]
+	// Simplified collection for now: just tag it
+	return []map[string]any{{"collected_item": val}}, "default", nil
 }
 
 func (w *ReactionWorker) opIfThen(inputs map[string]any) (map[string]any, string, error) {

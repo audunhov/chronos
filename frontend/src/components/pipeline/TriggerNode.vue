@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Handle, Position, type NodeProps } from '@vue-flow/core'
+import { Handle, Position, type NodeProps, useVueFlow } from '@vue-flow/core'
 
 const props = defineProps<NodeProps<{
     event: string;
@@ -7,10 +7,10 @@ const props = defineProps<NodeProps<{
     availableEvents?: string[];
 }>>()
 
-const emit = defineEmits(['update:data'])
+const { updateNodeData } = useVueFlow()
 
 const updateEvent = (event: string) => {
-    emit('update:data', { ...props.data, event })
+    updateNodeData(props.id, { event })
 }
 </script>
 

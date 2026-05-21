@@ -25,7 +25,7 @@ const route = useRoute()
 const router = useRouter()
 const pipelineId = route.params.id as string
 
-const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, toObject } = useVueFlow()
+const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, updateNodeData, toObject } = useVueFlow()
 
 const loading = ref(false)
 const reaction = ref<any>(null)
@@ -48,6 +48,7 @@ const ACTION_DEFS: Record<string, { inputs: string[], outputs: string[] }> = {
     FindRole: { inputs: ['target_id', 'role_type'], outputs: ['user_id', 'email', 'name'] },
     SendEmail: { inputs: ['to_email', 'subject', 'body'], outputs: ['success'] },
     ForEach: { inputs: ['list'], outputs: ['item'] },
+    Collect: { inputs: ['value'], outputs: ['collected_item'] },
 }
 
 const fetchPipeline = async () => {
@@ -59,16 +60,14 @@ const fetchPipeline = async () => {
         
         if (r && r.config) {
             reaction.value = r
-            // Map legacy pos_x/y if they exist to the new structure
-            const mappedNodes = (r.config.nodes || []).map((n: any) => ({
+            nodes.value = (r.config.nodes || []).map((n: any) => ({
                 ...n,
                 position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 }
             }))
-            nodes.value = mappedNodes
             edges.value = r.config.edges || []
             
             if (r.trigger_event) {
-                updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
+                await updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
             }
         }
     } catch (e) {
@@ -82,27 +81,26 @@ const updateTriggerOutputs = async (event: string, aggregateId?: string) => {
     const triggerNode = nodes.value.find(n => n.type === 'trigger')
     if (!triggerNode) return
 
-    let dynamicOutputs = TRIGGER_VAR_MAP[event] || ['timestamp']
+    let outputs = TRIGGER_VAR_MAP[event] || ['timestamp']
     
     if (event === 'FormResponseSubmitted' && aggregateId) {
         try {
             const formsData = await api.getForms()
             const form = Array.isArray(formsData) ? formsData.find(f => f.id === aggregateId) : null
             if (form && form.schema && (form.schema as any).fields) {
-                dynamicOutputs = [
-                    ...dynamicOutputs,
+                outputs = [
+                    ...outputs,
                     ...(form.schema as any).fields.map((f: any) => `ans_${f.name}`)
                 ]
             }
         } catch (e) { console.error(e) }
     }
     
-    triggerNode.data = {
-        ...triggerNode.data,
+    updateNodeData(triggerNode.id, {
         event,
-        outputs: dynamicOutputs,
+        outputs,
         availableEvents: Object.keys(TRIGGER_VAR_MAP)
-    }
+    })
 }
 
 const addActionNode = (type: string) => {

@@ -326,6 +326,36 @@ export const testPipeline = (
     {}
   >({ url: "/api/admin/pipelines/test", method: "post", ...variables, signal });
 
+export type GlobalSearchQueryParams = {
+  q: string;
+};
+
+export type GlobalSearchError = Fetcher.ErrorWrapper<undefined>;
+
+export type GlobalSearchResponse = {
+  id?: string;
+  type?: string;
+  title?: string;
+  subtitle?: string;
+}[];
+
+export type GlobalSearchVariables = {
+  queryParams: GlobalSearchQueryParams;
+};
+
+export const globalSearch = (
+  variables: GlobalSearchVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GlobalSearchResponse,
+    GlobalSearchError,
+    undefined,
+    {},
+    GlobalSearchQueryParams,
+    {}
+  >({ url: "/api/admin/search", method: "get", ...variables, signal });
+
 export type GetOrgansQueryParams = {
   org_id: string;
 };

@@ -57,6 +57,9 @@ export const api = {
     getAuditLogs: (orgId?: string, actorId?: string, targetId?: string) => 
         chronos.getAuditLogs({ queryParams: { org_id: orgId, actor_id: actorId, target_id: targetId } }),
 
+    // Admin
+    globalSearch: (query: string) => chronos.globalSearch({ queryParams: { q: query } }),
+
     // Reactions (Pipelines)
     getReactions: (orgId: string, triggerAggregateId?: string) => 
         chronos.getReactions({ queryParams: { org_id: orgId, trigger_aggregate_id: triggerAggregateId } }),

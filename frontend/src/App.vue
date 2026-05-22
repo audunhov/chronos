@@ -6,6 +6,7 @@ import RegisterForm from './components/RegisterForm.vue'
 import LoginForm from './components/LoginForm.vue'
 import BCard from './components/base/BCard.vue'
 import BButton from './components/base/BButton.vue'
+import OmniSearch from './components/OmniSearch.vue'
 
 const organizations = ref<{id: string, name: string}[]>([])
 const loading = ref(false)
@@ -130,5 +131,8 @@ onMounted(() => {
         <RegisterForm :organizations="organizations" @registered="onMemberRegistered" @cancel="showModal = false" />
       </BCard>
     </div>
+
+    <!-- Global OmniSearch -->
+    <OmniSearch v-if="auth.user && auth.user.role === 'admin'" />
   </div>
 </template>

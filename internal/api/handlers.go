@@ -477,6 +477,61 @@ func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"id": id})
 }
+func (s *Server) GlobalSearchHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if len(q) < 2 {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+
+	searchQuery := "%" + strings.ToLower(q) + "%"
+
+	query := `
+		SELECT id, 'user' as type, name as title, email as subtitle
+		FROM users
+		WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1
+		UNION ALL
+		SELECT id, 'org' as type, name as title, path::text as subtitle
+		FROM organization_hierarchy
+		WHERE LOWER(name) LIKE $1
+		UNION ALL
+		SELECT id, 'pipeline' as type, trigger_event as title, id::text as subtitle
+		FROM event_reactions
+		WHERE LOWER(trigger_event) LIKE $1 OR id::text LIKE $1
+		LIMIT 20
+	`
+
+	rows, err := s.db.QueryContext(r.Context(), query, searchQuery)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type SearchResult struct {
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Title    string `json:"title"`
+		Subtitle string `json:"subtitle"`
+	}
+
+	var results []SearchResult
+	for rows.Next() {
+		var res SearchResult
+		if err := rows.Scan(&res.ID, &res.Type, &res.Title, &res.Subtitle); err == nil {
+			results = append(results, res)
+		}
+	}
+
+	if results == nil {
+		results = []SearchResult{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
 func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
 	if orgID == "" {

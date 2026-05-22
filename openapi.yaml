@@ -397,6 +397,35 @@ paths:
         '201':
           description: Secret created
           
+  /api/admin/treasury/reconcile:
+    post:
+      operationId: reconcileTreasury
+      summary: Upload bank export CSV for automatic reconciliation (Admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Reconciliation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matched:
+                    type: integer
+                  amount:
+                    type: integer
+
   /api/admin/organs:
     get:
       operationId: getOrgans

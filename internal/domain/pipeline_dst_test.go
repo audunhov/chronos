@@ -118,7 +118,7 @@ func simulateComplexPipeline(t *testing.T, seed int64) {
 	config := PipelineConfig{Nodes: nodes, Edges: edges}
 
 	// 2. Execute
-	err := executor.Execute(config, triggerData)
+	_, err := executor.Execute(config, triggerData)
 	if err != nil {
 		t.Fatalf("Randomized execution failed: %v", err)
 	}
@@ -153,6 +153,6 @@ func TestPipelineDAG_DeepBranching(t *testing.T) {
 	}
 
 	// Should only execute on_true
-	err := executor.Execute(config, nil)
+	_, err := executor.Execute(config, nil)
 	if err != nil { t.Fatal(err) }
 }

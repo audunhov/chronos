@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"register/internal/domain"
@@ -1535,6 +1536,83 @@ func (s *Server) DeleteReactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) ReconcileTreasuryHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(10 << 20) // 10 MB limit
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Error retrieving file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Parse CSV and look for UUIDs
+	body, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Error reading file", http.StatusInternalServerError)
+		return
+	}
+
+	content := string(body)
+	
+	// Find all PENDING invoices
+	rows, err := s.db.QueryContext(r.Context(), "SELECT id, membership_id, amount FROM invoice_view WHERE status = 'PENDING'")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type Invoice struct {
+		ID           string
+		MembershipID string
+		Amount       int
+	}
+	var invoices []Invoice
+	for rows.Next() {
+		var inv Invoice
+		if err := rows.Scan(&inv.ID, &inv.MembershipID, &inv.Amount); err == nil {
+			invoices = append(invoices, inv)
+		}
+	}
+
+	matchedCount := 0
+	totalAmount := 0
+
+	for _, inv := range invoices {
+		// Very simple matching for prototype: check if the UUID exists in the CSV text
+		if strings.Contains(content, inv.ID) {
+			// Trigger PaymentReceived event
+			event := domain.PaymentReceived{
+				ID:        inv.ID,
+				Amount:    inv.Amount,
+				Timestamp: time.Now(),
+			}
+			err := s.eventStore.Append(r.Context(), inv.MembershipID, 0, event) // Use version 0 or ignore versioning for this simple implementation
+			if err == nil {
+				matchedCount++
+				totalAmount += inv.Amount
+				
+				// Update invoice_view status (in a real system the projection worker would do this, but we force it here for immediate feedback)
+				s.db.ExecContext(r.Context(), "UPDATE invoice_view SET status = 'PAID' WHERE id = $1", inv.ID)
+				s.db.ExecContext(r.Context(), "UPDATE membership_view SET balance = balance + $1 WHERE id = $2", inv.Amount, inv.MembershipID)
+			}
+		}
+	}
+
+	res := map[string]any{
+		"matched": matchedCount,
+		"amount":  totalAmount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
 }
 
 func (s *Server) GetStatsHandler(w http.ResponseWriter, r *http.Request) {

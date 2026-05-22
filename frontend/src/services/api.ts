@@ -53,6 +53,17 @@ export const api = {
 
     // Admin Tools
     getTreasuryReport: () => chronos.getTreasuryReport(),
+    reconcileTreasury: (file: File) => {
+        const formData = new FormData()
+        formData.append('file', file)
+        return fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/treasury/reconcile`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Authorization': `Bearer ${auth.token}`
+            }
+        }).then(res => res.json())
+    },
     getStats: () => chronos.getStats(),
     getAuditLogs: (orgId?: string, actorId?: string, targetId?: string) => 
         chronos.getAuditLogs({ queryParams: { org_id: orgId, actor_id: actorId, target_id: targetId } }),

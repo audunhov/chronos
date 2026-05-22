@@ -409,6 +409,42 @@ export const createSecret = (
     {}
   >({ url: "/api/admin/secrets", method: "post", ...variables, signal });
 
+export type ReconcileTreasuryError = Fetcher.ErrorWrapper<undefined>;
+
+export type ReconcileTreasuryResponse = {
+  matched?: number;
+  amount?: number;
+};
+
+export type ReconcileTreasuryRequestBody = {
+  /**
+   * @format binary
+   */
+  file?: Blob;
+};
+
+export type ReconcileTreasuryVariables = {
+  body?: ReconcileTreasuryRequestBody;
+};
+
+export const reconcileTreasury = (
+  variables: ReconcileTreasuryVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    ReconcileTreasuryResponse,
+    ReconcileTreasuryError,
+    ReconcileTreasuryRequestBody,
+    {},
+    {},
+    {}
+  >({
+    url: "/api/admin/treasury/reconcile",
+    method: "post",
+    ...variables,
+    signal,
+  });
+
 export type GetOrgansQueryParams = {
   org_id: string;
 };

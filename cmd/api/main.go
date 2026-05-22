@@ -96,6 +96,7 @@ func main() {
 			server.GetSecretsHandler(w, r)
 		}
 	})
+	apiMux.HandleFunc("/admin/treasury/reconcile", server.ReconcileTreasuryHandler)
 	apiMux.HandleFunc("/admin/organs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			server.CreateOrganHandler(w, r)

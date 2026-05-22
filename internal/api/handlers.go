@@ -1245,6 +1245,56 @@ func (s *Server) GetTreasuryReportHandler(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(report)
 }
 
+func (s *Server) GetPipelineExecutionsHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	if orgID == "" {
+		http.Error(w, "Missing org_id", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		SELECT e.id, e.pipeline_id, e.trigger_event, e.status, e.logs, e.executed_at
+		FROM pipeline_executions e
+		JOIN event_reactions r ON e.pipeline_id = r.id
+		WHERE r.org_id = $1
+		ORDER BY e.executed_at DESC
+		LIMIT 50`
+
+	rows, err := s.db.QueryContext(r.Context(), query, orgID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type ExecutionLog struct {
+		ID           string           `json:"id"`
+		PipelineID   string           `json:"pipeline_id"`
+		TriggerEvent string           `json:"trigger_event"`
+		Status       string           `json:"status"`
+		Logs         []map[string]any `json:"logs"`
+		ExecutedAt   time.Time        `json:"executed_at"`
+	}
+
+	var executions []ExecutionLog
+	for rows.Next() {
+		var exec ExecutionLog
+		var logsJSON []byte
+		if err := rows.Scan(&exec.ID, &exec.PipelineID, &exec.TriggerEvent, &exec.Status, &logsJSON, &exec.ExecutedAt); err != nil {
+			continue
+		}
+		json.Unmarshal(logsJSON, &exec.Logs)
+		executions = append(executions, exec)
+	}
+
+	if executions == nil {
+		executions = []ExecutionLog{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(executions)
+}
+
 func (s *Server) TestPipelineHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PipelineID  string                `json:"pipeline_id"`
@@ -1289,7 +1339,7 @@ func (s *Server) TestPipelineHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Run
-	err = executor.Execute(dag, req.TriggerData)
+	trace, err := executor.Execute(dag, req.TriggerData)
 	
 	res := struct {
 		Success bool     `json:"success"`
@@ -1299,6 +1349,12 @@ func (s *Server) TestPipelineHandler(w http.ResponseWriter, r *http.Request) {
 		Success: err == nil,
 		Logs:    []string{"Test run started", "Rolling back changes..."},
 	}
+	
+	for _, t := range trace {
+		tBytes, _ := json.Marshal(t)
+		res.Logs = append(res.Logs, string(tBytes))
+	}
+
 	if err != nil {
 		res.Error = err.Error()
 	}

@@ -48,12 +48,15 @@ const ACTION_DEFS: Record<string, { inputs: string[], outputs: string[] }> = {
 const route = useRoute()
 const router = useRouter()
 const pipelineId = route.params.id as string
+const isHistoryMode = route.name === 'pipeline-history'
+const executionId = route.params.id as string
 
 const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, updateNodeData, toObject, project, screenToFlowCoordinate } = useVueFlow()
 const nodesInitialized = useNodesInitialized()
 
 const loading = ref(false)
 const reaction = ref<any>(null)
+const execution = ref<any>(null)
 const forms = ref<any[]>([])
 const referenceData = ref({
     organizations: [] as any[],
@@ -65,17 +68,25 @@ const fetchPipeline = async () => {
     loading.value = true
     try {
         const orgId = route.query.org_id as string
-        const [data, formsData, orgsData, organsData] = await Promise.all([
+        const targetPipelineId = isHistoryMode ? (route.query.pipeline_id as string) : pipelineId
+
+        const [data, formsData, orgsData, organsData, execsData] = await Promise.all([
             api.getReactions(orgId),
             api.getForms().catch(() => []),
             api.getOrganizationHierarchy().catch(() => []),
-            api.getOrgans(orgId).catch(() => [])
+            api.getOrgans(orgId).catch(() => []),
+            isHistoryMode ? api.getPipelineExecutions(orgId) : Promise.resolve([])
         ])
+        
         forms.value = Array.isArray(formsData) ? formsData : []
         referenceData.value.organizations = Array.isArray(orgsData) ? orgsData : []
         referenceData.value.organs = Array.isArray(organsData) ? organsData : []
 
-        const r = Array.isArray(data) ? data.find(item => item.id === pipelineId) : null
+        if (isHistoryMode) {
+            execution.value = Array.isArray(execsData) ? execsData.find(e => e.id === executionId) : null
+        }
+
+        const r = Array.isArray(data) ? data.find(item => item.id === targetPipelineId) : null
         if (r && r.config) {
             reaction.value = r
             const mappedNodes = (r.config.nodes || []).map((n: any) => {
@@ -84,23 +95,43 @@ const fetchPipeline = async () => {
                     position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 }
                 }
                 
-                // Inject callbacks and data during load
+                let highlightClass = ''
+                if (isHistoryMode && execution.value) {
+                    const logs = execution.value.logs || []
+                    const logEntry = logs.find((l: any) => l.node_id === node.id)
+                    if (logEntry) {
+                        highlightClass = logEntry.error ? 'ring-8 ring-red-500 shadow-[0_0_20px_rgba(239,68,68,1)]' : 'ring-8 ring-green-500 shadow-[0_0_20px_rgba(34,197,94,1)]'
+                    } else if (node.type === 'trigger') {
+                         highlightClass = 'ring-8 ring-green-500 shadow-[0_0_20px_rgba(34,197,94,1)]'
+                    } else {
+                        highlightClass = 'opacity-50 grayscale'
+                    }
+                }
+
                 if (node.type === 'trigger') {
                     node.data = {
                         ...node.data,
                         aggregateId: r.trigger_aggregate_id || node.data?.aggregateId,
                         availableEvents: Object.keys(TRIGGER_VAR_MAP),
                         forms: forms.value,
-                        onUpdateEvent: handleTriggerEventChange,
-                        onUpdateAggregate: handleTriggerAggregateChange
+                        onUpdateEvent: isHistoryMode ? undefined : handleTriggerEventChange,
+                        onUpdateAggregate: isHistoryMode ? undefined : handleTriggerAggregateChange,
+                        highlightClass
                     }
                 } else if (node.type === 'action' || node.type === 'logic' || node.type === 'code') {
                     node.data = {
                         ...node.data,
                         referenceData: referenceData.value,
-                        onUpdateData: handleActionDataChange
+                        onUpdateData: isHistoryMode ? undefined : handleActionDataChange,
+                        highlightClass
                     }
                 }
+                
+                if (isHistoryMode) {
+                     node.draggable = false
+                     node.selectable = false
+                }
+                
                 return node
             })
             nodes.value = mappedNodes

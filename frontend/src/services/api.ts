@@ -63,6 +63,7 @@ export const api = {
     createReaction: (data: any) => chronos.createReaction({ body: data }),
     updateReaction: (id: string, config: any) => chronos.updateReaction({ body: { id, config } }),
     deleteReaction: (id: string) => chronos.deleteReaction({ queryParams: { id } }),
+    getPipelineExecutions: (orgId: string) => chronos.getPipelineExecutions({ queryParams: { org_id: orgId } }),
     testPipeline: (pipelineId: string, triggerData: any, config?: any) => chronos.testPipeline({ 
         body: { 
             pipeline_id: pipelineId, 

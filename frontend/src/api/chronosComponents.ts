@@ -246,6 +246,48 @@ export const deleteReaction = (
     {}
   >({ url: "/api/admin/reactions", method: "delete", ...variables, signal });
 
+export type GetPipelineExecutionsQueryParams = {
+  org_id: string;
+};
+
+export type GetPipelineExecutionsError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetPipelineExecutionsResponse = {
+  id?: string;
+  pipeline_id?: string;
+  trigger_event?: string;
+  status?: string;
+  logs?: {
+    [key: string]: any;
+  }[];
+  /**
+   * @format date-time
+   */
+  executed_at?: string;
+}[];
+
+export type GetPipelineExecutionsVariables = {
+  queryParams: GetPipelineExecutionsQueryParams;
+};
+
+export const getPipelineExecutions = (
+  variables: GetPipelineExecutionsVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetPipelineExecutionsResponse,
+    GetPipelineExecutionsError,
+    undefined,
+    {},
+    GetPipelineExecutionsQueryParams,
+    {}
+  >({
+    url: "/api/admin/pipelines/executions",
+    method: "get",
+    ...variables,
+    signal,
+  });
+
 export type TestPipelineError = Fetcher.ErrorWrapper<undefined>;
 
 export type TestPipelineResponse = {

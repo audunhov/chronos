@@ -47,9 +47,11 @@ type PipelineExecutor struct {
 	Operations map[string]func(inputs map[string]any) ([]map[string]any, string, error)
 }
 
-func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string]any) error {
+func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string]any) ([]map[string]any, error) {
 	results := make(map[string]map[string]any)
 	results["trigger"] = triggerData
+
+	var trace []map[string]any
 
 	type ExecutionTask struct {
 		NodeID      string
@@ -69,7 +71,9 @@ func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string
 
 	for len(queue) > 0 {
 		if executionCount > maxExecutions {
-			return fmt.Errorf("pipeline exceeded max executions (%d)", maxExecutions)
+			err := fmt.Errorf("pipeline exceeded max executions (%d)", maxExecutions)
+			trace = append(trace, map[string]any{"error": err.Error()})
+			return trace, err
 		}
 		executionCount++
 
@@ -86,7 +90,11 @@ func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string
 		if node == nil { continue }
 
 		op, ok := e.Operations[node.Type]
-		if !ok { return fmt.Errorf("unknown operation: %s", node.Type) }
+		if !ok { 
+			err := fmt.Errorf("unknown operation: %s", node.Type)
+			trace = append(trace, map[string]any{"node_id": task.NodeID, "error": err.Error()})
+			return trace, err 
+		}
 
 		// Resolve inputs
 		resolvedInputs := make(map[string]any)
@@ -117,10 +125,22 @@ func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string
 
 		// Execute
 		outputList, chosenPort, err := op(resolvedInputs)
-		if err != nil {
-			if err.Error() == "filtered" { continue }
-			return fmt.Errorf("node %s failed: %w", node.ID, err)
+		
+		traceEntry := map[string]any{
+			"node_id": task.NodeID,
+			"inputs": resolvedInputs,
 		}
+
+		if err != nil {
+			traceEntry["error"] = err.Error()
+			trace = append(trace, traceEntry)
+			if err.Error() == "filtered" { continue }
+			return trace, fmt.Errorf("node %s failed: %w", node.ID, err)
+		}
+
+		traceEntry["outputs"] = outputList
+		traceEntry["port"] = chosenPort
+		trace = append(trace, traceEntry)
 
 		// Store last result for referencing
 		if len(outputList) > 0 {
@@ -142,7 +162,7 @@ func (e *PipelineExecutor) Execute(config PipelineConfig, triggerData map[string
 		}
 	}
 
-	return nil
+	return trace, nil
 }
 
 // Logic Helper: Evaluate a simple condition (used by If/Then nodes)

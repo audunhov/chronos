@@ -9,11 +9,12 @@ const props = defineProps<NodeProps<{
     forms?: any[];
     onUpdateEvent?: (ev: string) => void;
     onUpdateAggregate?: (agg: string) => void;
+    highlightClass?: string;
 }>>()
 </script>
 
 <template>
-  <div :class="['bg-purple-50 border-4 border-black p-4 min-w-[220px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-purple-400' : '']">
+  <div :class="['bg-purple-50 border-4 border-black p-4 min-w-[220px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-purple-400' : '', props.data.highlightClass || '']">
     <div class="mb-4 space-y-2">
         <p class="text-[8px] font-black uppercase text-purple-600">Start (Trigger)</p>
         <select 

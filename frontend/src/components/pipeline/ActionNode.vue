@@ -13,6 +13,7 @@ const props = defineProps<NodeProps<{
         roles: string[];
     };
     onUpdateData?: (key: string, val: any) => void;
+    highlightClass?: string;
     // Dynamic values stored in data
     [key: string]: any;
 }>>()
@@ -29,7 +30,8 @@ const getOptionsForInput = (inp: string) => {
 </script>
 
 <template>
-  <div :class="['bg-white border-4 border-black p-4 min-w-[280px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-blue-400' : '']">
+  <div :class="['bg-white border-4 border-black p-4 min-w-[200px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-blue-400' : '', props.data.highlightClass || '']">
+
     <div class="mb-4 relative">
         <Handle 
             type="target" 

@@ -297,22 +297,30 @@ func (w *ReactionWorker) handleEvent(ctx context.Context, aggregateID, eventType
 		if formID, ok := payloadMap["form_id"].(string); ok { matchID = formID }
 	}
 	rows, err := w.db.QueryContext(ctx, `
-		SELECT action_type, config 
+		SELECT id, action_type, config 
 		FROM event_reactions 
 		WHERE trigger_event = $1 AND (trigger_aggregate_id = $2 OR trigger_aggregate_id IS NULL)`, 
 		eventType, matchID)
 	if err != nil { return err }
 	defer rows.Close()
 	for rows.Next() {
-		var actionType string
+		var reactionID, actionType string
 		var configJSON []byte
-		if err := rows.Scan(&actionType, &configJSON); err != nil { continue }
+		if err := rows.Scan(&reactionID, &actionType, &configJSON); err != nil { continue }
 		if actionType == "PIPELINE_DAG" {
 			var config domain.PipelineConfig
 			if err := json.Unmarshal(configJSON, &config); err != nil { continue }
-			if err := w.executor.Execute(config, payloadMap); err != nil {
-				log.Printf("Pipeline execution failed: %v", err)
+			trace, execErr := w.executor.Execute(config, payloadMap)
+			status := "SUCCESS"
+			if execErr != nil {
+				status = "FAILED"
+				log.Printf("Pipeline execution failed: %v", execErr)
 			}
+			traceJSON, _ := json.Marshal(trace)
+			_, _ = w.db.ExecContext(ctx, `
+				INSERT INTO pipeline_executions (pipeline_id, trigger_event, status, logs)
+				VALUES ($1, $2, $3, $4)`,
+				reactionID, eventType, status, traceJSON)
 		}
 	}
 	return nil

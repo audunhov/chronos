@@ -41,6 +41,11 @@ const router = createRouter({
       component: PipelineEditorView,
     },
     {
+      path: '/admin/pipelines/history/:id',
+      name: 'pipeline-history',
+      component: PipelineEditorView,
+    },
+    {
       path: '/admin',
       component: AdminView,
       children: [

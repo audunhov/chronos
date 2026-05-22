@@ -85,9 +85,17 @@ func (w *SchedulerWorker) checkTimedTriggers(ctx context.Context) error {
 				"timestamp": time.Now().Format(time.RFC3339),
 				"source":    "scheduler",
 			}
-			if err := w.executor.Execute(dag, triggerData); err != nil {
-				log.Printf("Timed pipeline %s failed: %v", id, err)
+			trace, execErr := w.executor.Execute(dag, triggerData)
+			status := "SUCCESS"
+			if execErr != nil {
+				status = "FAILED"
+				log.Printf("Timed pipeline %s failed: %v", id, execErr)
 			}
+			traceJSON, _ := json.Marshal(trace)
+			_, _ = w.db.ExecContext(ctx, `
+				INSERT INTO pipeline_executions (pipeline_id, trigger_event, status, logs)
+				VALUES ($1, 'TimedSchedule', $2, $3)`,
+				id, status, traceJSON)
 		}
 	}
 

@@ -9,6 +9,7 @@ const props = defineProps<NodeProps<{
     connectedInputs?: Set<string>;
     onUpdateData?: (key: string, val: any) => void;
     logs?: string[];
+    highlightClass?: string;
     [key: string]: any;
 }>>()
 
@@ -54,7 +55,7 @@ const isConnected = (id: string) => props.data.connectedInputs?.has(id)
 </script>
 
 <template>
-  <div :class="['bg-gray-900 border-4 border-black p-4 min-w-[380px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-yellow-400' : '']">
+  <div :class="['bg-gray-900 border-4 border-black p-4 min-w-[380px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-yellow-400' : '', props.data.highlightClass || '']">
     <div class="mb-4 flex justify-between items-start">
         <div class="relative">
             <Handle 

@@ -233,6 +233,45 @@ paths:
         '200':
           description: Reaction deleted
 
+  /api/admin/pipelines/executions:
+    get:
+      operationId: getPipelineExecutions
+      summary: Get pipeline execution history (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of execution logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    pipeline_id:
+                      type: string
+                    trigger_event:
+                      type: string
+                    status:
+                      type: string
+                    logs:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                    executed_at:
+                      type: string
+                      format: date-time
+
   /api/admin/pipelines/test:
     post:
       operationId: testPipeline

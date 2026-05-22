@@ -50,6 +50,11 @@ func main() {
 	go paymentWorker.Start(ctx)
 	log.Println("Payment worker started")
 
+	// Start Snapshot Worker
+	snapshotWorker := storage.NewSnapshotWorker(db, eventStore)
+	go snapshotWorker.Start(ctx)
+	log.Println("Snapshot worker started")
+
 	// Setup API Server
 	server := api.NewServer(db, eventStore)
 	

@@ -23,8 +23,55 @@ type HistoricalMember struct {
 }
 
 func GetMembersAsOf(ctx context.Context, db *sql.DB, targetDate time.Time) (map[string]*HistoricalMember, error) {
+	users := make(map[string]*domain.User)
+	memberships := make(map[string]*domain.Membership)
+
+	// 1. Load latest snapshots before targetDate
+	snapshotRows, err := db.QueryContext(ctx, `
+		SELECT s.aggregate_id, s.version, s.state, e.event_type
+		FROM event_snapshots s
+		JOIN (
+			SELECT aggregate_id, MAX(version) as version
+			FROM event_snapshots
+			WHERE created_at <= $1
+			GROUP BY aggregate_id
+		) max_s ON s.aggregate_id = max_s.aggregate_id AND s.version = max_s.version
+		JOIN event_store e ON e.aggregate_id = s.aggregate_id AND e.version = 1
+	`, targetDate)
+	if err != nil {
+		return nil, err
+	}
+	defer snapshotRows.Close()
+
+	aggregateVersions := make(map[string]int)
+
+	for snapshotRows.Next() {
+		var aggregateID string
+		var version int
+		var stateJSON []byte
+		var firstEventType string
+		if err := snapshotRows.Scan(&aggregateID, &version, &stateJSON, &firstEventType); err != nil {
+			continue
+		}
+
+		aggregateVersions[aggregateID] = version
+
+		switch firstEventType {
+		case domain.EventTypeUserCreated:
+			var u domain.User
+			json.Unmarshal(stateJSON, &u)
+			users[aggregateID] = &u
+		case domain.EventTypeMembershipCreated:
+			var m domain.Membership
+			json.Unmarshal(stateJSON, &m)
+			memberships[aggregateID] = &m
+		}
+	}
+
+	// 2. Load events after the snapshot (or all if no snapshot) up to targetDate
+	// We can query all events up to targetDate, but we ignore those <= snapshot version
 	rows, err := db.QueryContext(ctx, `
-		SELECT aggregate_id, event_type, payload, created_at 
+		SELECT aggregate_id, version, event_type, payload, created_at 
 		FROM event_store 
 		WHERE created_at <= $1 
 		ORDER BY id ASC`, targetDate)
@@ -33,16 +80,19 @@ func GetMembersAsOf(ctx context.Context, db *sql.DB, targetDate time.Time) (map[
 	}
 	defer rows.Close()
 
-	users := make(map[string]*domain.User)
-	memberships := make(map[string]*domain.Membership)
-
 	for rows.Next() {
 		var aggregateID string
+		var version int
 		var eventType string
 		var payload []byte
 		var createdAt time.Time
-		if err := rows.Scan(&aggregateID, &eventType, &payload, &createdAt); err != nil {
+		if err := rows.Scan(&aggregateID, &version, &eventType, &payload, &createdAt); err != nil {
 			return nil, err
+		}
+
+		// Skip if this event is already covered by a snapshot
+		if snapVer, ok := aggregateVersions[aggregateID]; ok && version <= snapVer {
+			continue
 		}
 
 		switch eventType {

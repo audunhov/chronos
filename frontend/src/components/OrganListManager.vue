@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { api } from '../services/api'
 import BButton from './base/BButton.vue'
 import BCard from './base/BCard.vue'
 import BInput from './base/BInput.vue'
 import BSelect from './base/BSelect.vue'
+import EmailComposer from './pipeline/EmailComposer.vue'
 
 const props = defineProps<{
     orgs: { id: string, name: string }[]
@@ -19,6 +20,7 @@ const selectedOrgan = ref<any | null>(null)
 const organMembers = ref<any[]>([])
 const membersLoading = ref(false)
 const showAddMember = ref(false)
+const showEmailComposer = ref(false)
 
 const newOrgan = ref({
     name: '',
@@ -28,6 +30,8 @@ const newOrgan = ref({
 const allMembers = ref<any[]>([]) // For å velge hvem som skal legges til
 const newMemberID = ref('')
 const newMemberRole = ref('Styremedlem')
+
+const organUserIds = computed(() => organMembers.value.map(m => m.user_id))
 
 const fetchOrgans = async () => {
     if (!selectedOrg.value) return
@@ -135,7 +139,7 @@ onMounted(() => {
             <BButton @click="showCreate = true" variant="primary" class="italic text-xs py-2">+ NYTT ORGAN</BButton>
         </div>
 
-        <div v-if="showCreate">
+        <div v-if="showCreate" class="animate-in slide-in-from-top-4">
             <BCard class="bg-yellow-50 max-w-2xl mx-auto">
                 <h3 class="text-xl font-black uppercase mb-6 italic">Opprett nytt organ</h3>
                 <div class="space-y-6">
@@ -154,13 +158,23 @@ onMounted(() => {
         </div>
 
         <div v-if="selectedOrgan">
-            <header class="flex justify-between items-end border-b-4 border-black pb-4 mb-8">
+            <header class="flex flex-col md:flex-row justify-between items-end border-b-4 border-black pb-4 mb-8 gap-4">
                 <div>
                     <BButton @click="selectedOrgan = null" variant="ghost" class="text-[10px] mb-4">← TILBAKE TIL LISTE</BButton>
                     <h3 class="text-4xl font-black uppercase italic tracking-tighter leading-none">{{ selectedOrgan.name }}</h3>
                     <p class="text-xs font-bold uppercase text-gray-400 mt-1 italic">Administrasjon av medlemmer og roller</p>
                 </div>
-                <BButton @click="showAddMember = true" variant="primary" class="text-xs py-2">+ LEGG TIL MEDLEM</BButton>
+                <div class="flex gap-2">
+                    <BButton 
+                        v-if="organMembers.length > 0"
+                        @click="showEmailComposer = true" 
+                        variant="primary" 
+                        class="bg-blue-600 border-black hover:bg-blue-500 text-xs py-2 px-4"
+                    >
+                        SEND E-POST TIL ALLE
+                    </BButton>
+                    <BButton @click="showAddMember = true" variant="primary" class="text-xs py-2 px-4">+ LEGG TIL MEDLEM</BButton>
+                </div>
             </header>
 
             <div v-if="showAddMember" class="mb-12">
@@ -215,6 +229,13 @@ onMounted(() => {
                     <p class="font-black uppercase text-gray-400 italic">Ingen medlemmer i dette organet ennå</p>
                 </div>
             </BCard>
+
+            <EmailComposer 
+                v-if="showEmailComposer"
+                :recipient-ids="organUserIds"
+                :recipient-names="`Alle i ${selectedOrgan.name}`"
+                @close="showEmailComposer = false"
+            />
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">

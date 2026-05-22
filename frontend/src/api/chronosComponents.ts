@@ -455,6 +455,29 @@ export const getFormResponses = (
     {}
   >({ url: "/api/admin/form-responses", method: "get", ...variables, signal });
 
+export type SendEmailError = Fetcher.ErrorWrapper<undefined>;
+
+export type SendEmailRequestBody = {
+  user_ids: string[];
+  subject: string;
+  body: string;
+};
+
+export type SendEmailVariables = {
+  body: SendEmailRequestBody;
+};
+
+export const sendEmail = (
+  variables: SendEmailVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<undefined, SendEmailError, SendEmailRequestBody, {}, {}, {}>({
+    url: "/api/commands/send-email",
+    method: "post",
+    ...variables,
+    signal,
+  });
+
 export type GetMembersHeaders = {
   /**
    * Optional organization filter

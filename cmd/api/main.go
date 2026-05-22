@@ -115,6 +115,7 @@ func main() {
 	apiMux.HandleFunc("/commands/update-form", server.UpdateFormHandler)
 	apiMux.HandleFunc("/commands/delete-form", server.DeleteFormHandler)
 	apiMux.HandleFunc("/commands/submit-form", server.SubmitFormResponseHandler)
+	apiMux.HandleFunc("/commands/send-email", server.SendEmailHandler)
 	
 	// Auth routes (Public)
 	mux.HandleFunc("/api/health/", server.HealthHandler)

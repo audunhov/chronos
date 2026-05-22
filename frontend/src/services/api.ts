@@ -100,4 +100,7 @@ export const api = {
     shredMember: (id: string) => chronos.shredMember({ 
         body: { id } 
     }),
+    sendEmail: (userIds: string[], subject: string, body: string) => chronos.sendEmail({ 
+        body: { user_ids: userIds, subject, body } 
+    }),
 };

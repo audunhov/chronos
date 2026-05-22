@@ -38,9 +38,14 @@ func (w *EmailWorker) Start(ctx context.Context) {
 
 func (w *EmailWorker) processOutbox(ctx context.Context) error {
 	rows, err := w.db.QueryContext(ctx, `
-		SELECT o.id, o.recipient_email, o.context, t.subject, t.body_html 
+		SELECT 
+			o.id, 
+			o.recipient_email, 
+			o.context, 
+			COALESCE(t.subject, o.subject) as subject, 
+			COALESCE(t.body_html, o.body_html) as body_tpl
 		FROM email_outbox o
-		JOIN email_templates t ON o.template_id = t.id
+		LEFT JOIN email_templates t ON o.template_id = t.id
 		WHERE o.status = 'PENDING'
 		FOR UPDATE SKIP LOCKED
 		LIMIT 10`)
@@ -50,8 +55,14 @@ func (w *EmailWorker) processOutbox(ctx context.Context) error {
 	defer rows.Close()
 
 	for rows.Next() {
-		var id, recipient, contextJSON, subject, bodyTpl string
+		var id, recipient, contextJSON string
+		var subject, bodyTpl sql.NullString
 		if err := rows.Scan(&id, &recipient, &contextJSON, &subject, &bodyTpl); err != nil {
+			continue
+		}
+
+		if !subject.Valid || !bodyTpl.Valid {
+			w.markFailed(ctx, id, "Missing subject or body")
 			continue
 		}
 
@@ -59,15 +70,15 @@ func (w *EmailWorker) processOutbox(ctx context.Context) error {
 		var templateData map[string]any
 		_ = json.Unmarshal([]byte(contextJSON), &templateData)
 
-		// 2. Render Template
-		body, err := renderTemplate(bodyTpl, templateData)
+		// 2. Render Template (even ad-hoc emails can have placeholders if context is provided)
+		body, err := renderTemplate(bodyTpl.String, templateData)
 		if err != nil {
 			w.markFailed(ctx, id, "Template error: "+err.Error())
 			continue
 		}
 
 		// 3. Send via SMTP
-		if err := sendEmail(recipient, subject, body); err != nil {
+		if err := sendEmail(recipient, subject.String, body); err != nil {
 			w.markFailed(ctx, id, "SMTP error: "+err.Error())
 			continue
 		}

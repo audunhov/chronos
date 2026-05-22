@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type Server struct {
@@ -1572,6 +1573,71 @@ func (s *Server) UpdateFormHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) SendEmailHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+		Subject string   `json:"subject"`
+		Body    string   `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		http.Error(w, "No recipients specified", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Resolve Emails
+	query := `SELECT email FROM users WHERE id = ANY($1)`
+	rows, err := s.db.QueryContext(r.Context(), query, pq.Array(req.UserIDs))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var emails []string
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err == nil {
+			emails = append(emails, email)
+		}
+	}
+
+	if len(emails) == 0 {
+		http.Error(w, "No valid recipients found", http.StatusNotFound)
+		return
+	}
+
+	// 2. Queue in Outbox
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	for _, email := range emails {
+		_, err = tx.ExecContext(r.Context(), `
+			INSERT INTO email_outbox (recipient_email, subject, body_html, status)
+			VALUES ($1, $2, $3, 'PENDING')`,
+			email, req.Subject, req.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (s *Server) GetMembersAsOfHandler(w http.ResponseWriter, r *http.Request) {

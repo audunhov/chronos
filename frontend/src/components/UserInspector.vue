@@ -5,6 +5,7 @@ import type { User, MyMembership, AuditLogEntry } from '../api'
 import BCard from './base/BCard.vue'
 import BBadge from './base/BBadge.vue'
 import BButton from './base/BButton.vue'
+import EmailComposer from './pipeline/EmailComposer.vue'
 
 const props = defineProps<{
     userId: string
@@ -14,6 +15,7 @@ const profile = ref<User | null>(null)
 const memberships = ref<MyMembership[]>([])
 const auditLogs = ref<AuditLogEntry[]>([])
 const loading = ref(false)
+const showEmailComposer = ref(false)
 
 const fetchData = async () => {
     if (!props.userId) return
@@ -54,7 +56,12 @@ onMounted(fetchData)
             <div class="flex flex-col md:flex-row justify-between items-start gap-6 border-b-8 border-black pb-8">
                 <div>
                     <h2 class="text-6xl font-black uppercase italic tracking-tighter">{{ profile.name }}</h2>
-                    <p class="text-xl font-bold bg-yellow-400 px-4 py-1 border-4 border-black inline-block mt-4">{{ profile.email }}</p>
+                    <div class="flex items-center gap-4 mt-4">
+                        <p class="text-xl font-bold bg-yellow-400 px-4 py-1 border-4 border-black inline-block">{{ profile.email }}</p>
+                        <BButton @click="showEmailComposer = true" variant="primary" class="bg-blue-600 border-black hover:bg-blue-500 font-black italic py-1 px-4 text-xs">
+                            SEND E-POST
+                        </BButton>
+                    </div>
                     <div class="mt-4 font-mono text-xs text-gray-500 uppercase">UUID: {{ profile.id }}</div>
                 </div>
                 <div class="text-right">
@@ -125,5 +132,12 @@ onMounted(fetchData)
                 </div>
             </div>
         </div>
+
+        <EmailComposer 
+            v-if="showEmailComposer && profile"
+            :recipient-ids="[profile.id!]"
+            :recipient-names="profile.name!"
+            @close="showEmailComposer = false"
+        />
     </div>
 </template>

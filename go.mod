@@ -3,15 +3,16 @@ module register
 go 1.25.0
 
 require (
+	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/lib/pq v1.12.3
 	golang.org/x/crypto v0.51.0
 )
 
 require (
 	github.com/dlclark/regexp2 v1.11.4 // indirect
-	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

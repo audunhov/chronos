@@ -419,6 +419,35 @@ paths:
                 items:
                   $ref: '#/components/schemas/FormResponse'
 
+  /api/commands/send-email:
+    post:
+      operationId: sendEmail
+      summary: Send ad-hoc email to users (Admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_ids
+                - subject
+                - body
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+                subject:
+                  type: string
+                body:
+                  type: string
+      responses:
+        '202':
+          description: Emails queued
+
   /api/members:
     get:
       operationId: getMembers

@@ -10,7 +10,7 @@ const props = defineProps<NodeProps<{
     value2?: string;
 }>>()
 
-const { updateNodeData } = useVueFlow('main')
+const { updateNodeData } = useVueFlow()
 
 const updateData = (key: string, val: string) => {
     updateNodeData(props.id, { [key]: val })
@@ -31,7 +31,7 @@ const isRef2 = computed(() => props.data.value2 && props.data.value2.includes('.
         />
         <p class="text-[8px] font-black uppercase text-yellow-600">Logikk</p>
         <h4 class="text-sm font-black uppercase italic tracking-tighter">
-            {{ data.type === 'if' ? 'IF / THEN' : (data.type === 'list_filter' ? 'FILTER LIST' : 'STOP FILTER') }}
+            {{ props.data.type === 'if' ? 'IF / THEN' : (props.data.type === 'list_filter' ? 'FILTER LIST' : 'STOP FILTER') }}
         </h4>
     </div>
 
@@ -40,16 +40,16 @@ const isRef2 = computed(() => props.data.value2 && props.data.value2.includes('.
         <div class="space-y-2">
             <div class="relative">
                 <input 
-                    :value="data.value1" 
+                    :value="props.data.value1" 
                     @input="(e: any) => updateData('value1', e.target.value)"
-                    :placeholder="data.type === 'list_filter' ? 'Mål-liste (ref)' : 'Verdi 1 (eller ref)'"
+                    :placeholder="props.data.type === 'list_filter' ? 'Mål-liste (ref)' : 'Verdi 1 (eller ref)'"
                     :class="['w-full border-2 border-black p-1 text-[10px] font-mono outline-none pr-6', isRef1 ? 'bg-purple-100 text-purple-900 font-bold' : 'bg-white focus:bg-yellow-100']"
                 />
                 <span v-if="isRef1" class="absolute right-1 top-1 text-[8px] opacity-50" title="Tolkes som referanse">🔗</span>
             </div>
             
             <select 
-                :value="data.operator" 
+                :value="props.data.operator" 
                 @change="(e: any) => updateData('operator', e.target.value)"
                 class="w-full bg-black text-white border-2 border-black p-1 text-[10px] font-black outline-none"
             >
@@ -63,16 +63,16 @@ const isRef2 = computed(() => props.data.value2 && props.data.value2.includes('.
 
             <div class="relative">
                 <input 
-                    :value="data.value2" 
+                    :value="props.data.value2" 
                     @input="(e: any) => updateData('value2', e.target.value)"
-                    :placeholder="data.type === 'list_filter' ? 'Filter-verdi' : 'Verdi 2'"
+                    :placeholder="props.data.type === 'list_filter' ? 'Filter-verdi' : 'Verdi 2'"
                     :class="['w-full border-2 border-black p-1 text-[10px] font-mono outline-none pr-6', isRef2 ? 'bg-purple-100 text-purple-900 font-bold' : 'bg-white focus:bg-yellow-100']"
                 />
                 <span v-if="isRef2" class="absolute right-1 top-1 text-[8px] opacity-50" title="Tolkes som referanse">🔗</span>
             </div>
         </div>
 
-        <div v-if="data.type === 'if'" class="space-y-3 text-right">
+        <div v-if="props.data.type === 'if'" class="space-y-3 text-right">
             <div class="flex justify-end items-center gap-2 relative group">
                 <span class="text-[10px] font-black text-green-600 uppercase italic">SANN</span>
                 <Handle 
@@ -94,11 +94,11 @@ const isRef2 = computed(() => props.data.value2 && props.data.value2.includes('.
         </div>
         <div v-else class="text-right space-y-3">
             <div class="flex justify-end items-center gap-2 relative group">
-                <span class="text-[8px] font-black text-black uppercase italic">{{ data.type === 'list_filter' ? 'Filtrert Liste' : 'Passér' }}</span>
+                <span class="text-[8px] font-black text-black uppercase italic">{{ props.data.type === 'list_filter' ? 'Filtrert Liste' : 'Passér' }}</span>
                 <Handle 
                     type="source" 
                     :position="Position.Right" 
-                    :id="data.type === 'list_filter' ? 'filtered_list' : 'default'" 
+                    :id="props.data.type === 'list_filter' ? 'filtered_list' : 'default'" 
                     class="!w-4 !h-4 !bg-black !border-4 !border-yellow-400 !-right-6" 
                 />
             </div>

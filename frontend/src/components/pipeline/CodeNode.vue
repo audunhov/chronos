@@ -12,7 +12,7 @@ const props = defineProps<NodeProps<{
     [key: string]: any;
 }>>()
 
-const { updateNodeData } = useVueFlow('main')
+const { updateNodeData } = useVueFlow()
 
 const codeValue = ref(props.data.code || '// Bruk variabler som input_navn\nconst hilsen = "Hei " + navn;\nreturn hilsen;')
 

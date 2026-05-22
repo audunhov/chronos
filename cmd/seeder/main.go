@@ -29,7 +29,7 @@ func main() {
 		"form_responses", "forms", "email_outbox", "email_templates",
 		"role_assignments", "organs", "membership_view", "event_store",
 		"users", "organization_hierarchy", "audit_logs", "magic_links",
-		"payment_pipelines", "invoice_view",
+		"payment_pipelines", "invoice_view", "event_reactions",
 	}
 	for _, table := range tables {
 		_, err := db.ExecContext(ctx, "TRUNCATE TABLE "+table+" CASCADE")
@@ -179,6 +179,15 @@ func main() {
 	}
 	_ = es.Append(ctx, formID, 1, formEvent)
 	log.Println("Created default survey")
+
+	// 5. Default Pipeline
+	reactionID := uuid.New().String()
+	defaultConfig := `{"nodes": [{"id": "trigger", "type": "trigger", "position": {"x": 50, "y": 50}, "data": {"event": "MembershipCreated", "outputs": ["user_id", "org_id"]}}], "edges": []}`
+	_, _ = db.ExecContext(ctx, `
+		INSERT INTO event_reactions (id, org_id, trigger_event, action_type, config)
+		VALUES ($1, $2, 'MembershipCreated', 'PIPELINE_DAG', $3)`,
+		reactionID, nationalID, defaultConfig)
+	log.Println("Created default pipeline")
 
 	log.Println("Bootstrapping complete!")
 }

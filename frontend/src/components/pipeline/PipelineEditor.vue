@@ -49,7 +49,7 @@ const route = useRoute()
 const router = useRouter()
 const pipelineId = route.params.id as string
 
-const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, updateNodeData, toObject, project, screenToFlowCoordinate } = useVueFlow('main')
+const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, updateNodeData, toObject, project, screenToFlowCoordinate } = useVueFlow()
 const nodesInitialized = useNodesInitialized()
 
 const loading = ref(false)
@@ -78,14 +78,32 @@ const fetchPipeline = async () => {
         const r = Array.isArray(data) ? data.find(item => item.id === pipelineId) : null
         if (r && r.config) {
             reaction.value = r
-            nodes.value = (r.config.nodes || []).map((n: any) => ({
-                ...n,
-                position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 },
-                data: {
-                    ...n.data,
-                    aggregateId: (n.type === 'trigger' && r.trigger_aggregate_id) ? r.trigger_aggregate_id : (n.data?.aggregateId || n.data?.trigger_aggregate_id)
+            const mappedNodes = (r.config.nodes || []).map((n: any) => {
+                const node = {
+                    ...n,
+                    position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 }
                 }
-            }))
+                
+                // Inject callbacks and data during load
+                if (node.type === 'trigger') {
+                    node.data = {
+                        ...node.data,
+                        aggregateId: r.trigger_aggregate_id || node.data?.aggregateId,
+                        availableEvents: Object.keys(TRIGGER_VAR_MAP),
+                        forms: forms.value,
+                        onUpdateEvent: handleTriggerEventChange,
+                        onUpdateAggregate: handleTriggerAggregateChange
+                    }
+                } else if (node.type === 'action' || node.type === 'logic' || node.type === 'code') {
+                    node.data = {
+                        ...node.data,
+                        referenceData: referenceData.value,
+                        onUpdateData: handleActionDataChange
+                    }
+                }
+                return node
+            })
+            nodes.value = mappedNodes
             edges.value = r.config.edges || []
             if (r.trigger_event) {
                 await updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
@@ -135,29 +153,20 @@ const handleTriggerAggregateChange = (newAgg: string) => {
     }
 }
 
-watch([nodes, forms, referenceData], () => {
+const handleActionDataChange = (nodeId: string, key: string, val: any) => {
+    updateNodeData(nodeId, { [key]: val })
+}
+
+// Watch for edge changes to update node connection status
+watch(edges, () => {
     nodes.value.forEach(node => {
         const edgesToNode = edges.value.filter(e => e.target === node.id)
         const connectedInputs = new Set(edgesToNode.map(e => e.targetHandle))
-        
-        if (node.type === 'trigger') {
-            if (node.data.onUpdateEvent !== handleTriggerEventChange) {
-                updateNodeData(node.id, {
-                    availableEvents: Object.keys(TRIGGER_VAR_MAP),
-                    forms: forms.value,
-                    onUpdateEvent: handleTriggerEventChange,
-                    onUpdateAggregate: handleTriggerAggregateChange
-                })
-            }
-        } else if (node.type === 'action' || node.type === 'logic') {
-            updateNodeData(node.id, {
-                connectedInputs,
-                referenceData: referenceData.value,
-                onUpdateData: (key: string, val: any) => updateNodeData(node.id, { [key]: val })
-            })
+        if (JSON.stringify(Array.from(node.data.connectedInputs || [])) !== JSON.stringify(Array.from(connectedInputs))) {
+            updateNodeData(node.id, { connectedInputs })
         }
     })
-}, { immediate: true })
+}, { deep: true })
 
 onConnect((params: any) => {
     addEdges([params])
@@ -196,7 +205,6 @@ const validationErrors = computed(() => {
         if (node.type === 'action' && node.data.inputs) {
             node.data.inputs.forEach((inp: string) => {
                 const hasConnection = edges.value.some(e => e.target === node.id && e.targetHandle === inp)
-                // If it's not connected, it must have a value in data
                 if (!hasConnection && !node.data[inp]) {
                     errors.push(`Node "${node.data.label}" mangler inndata for "${inp}".`)
                 }
@@ -208,22 +216,26 @@ const validationErrors = computed(() => {
 
 const addActionNode = (type: string) => {
     const def = ACTION_DEFS[type]
+    const id = `node_${Date.now()}`
     const newNode: Node = {
-        id: `node_${Date.now()}`,
+        id,
         type: 'action',
         position: { x: 400, y: 100 },
         data: {
             label: type,
             inputs: def?.inputs || [],
-            outputs: def?.outputs || []
+            outputs: def?.outputs || [],
+            referenceData: referenceData.value,
+            onUpdateData: (key: string, val: any) => handleActionDataChange(id, key, val)
         }
     }
     addNodes([newNode])
 }
 
 const addLogicNode = (type: 'if' | 'filter' | 'list_filter') => {
+    const id = `node_${Date.now()}`
     const newNode: Node = {
-        id: `node_${Date.now()}`,
+        id,
         type: 'logic',
         position: { x: 400, y: 100 },
         data: { 
@@ -231,7 +243,8 @@ const addLogicNode = (type: 'if' | 'filter' | 'list_filter') => {
             operator: '==', 
             value1: '', 
             value2: '',
-            inputs: type === 'list_filter' ? ['list', 'operator', 'value'] : ['v1', 'v2', 'operator']
+            inputs: type === 'list_filter' ? ['list', 'operator', 'value'] : ['v1', 'v2', 'operator'],
+            onUpdateData: (key: string, val: any) => handleActionDataChange(id, key, val)
         }
     }
     addNodes([newNode])
@@ -248,42 +261,35 @@ const onDrop = (event: DragEvent) => {
     const dataStr = event.dataTransfer?.getData('application/vueflow')
     if (!dataStr) return
     const { type, nodeClass } = JSON.parse(dataStr)
-    const position = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-    if (nodeClass === 'action') {
-        const def = ACTION_DEFS[type]
-        addNodes([{
-            id: `node_${Date.now()}`,
-            type: 'action',
-            position,
-            data: { label: type, inputs: def?.inputs || [], outputs: def?.outputs || [] }
-        }])
-    } else if (nodeClass === 'logic') {
-        addNodes([{
-            id: `node_${Date.now()}`,
-            type: 'logic',
-            position,
-            data: { 
-                type, operator: '==', value1: '', value2: '',
-                inputs: type === 'list_filter' ? ['list', 'operator', 'value'] : ['v1', 'v2', 'operator']
-            }
-        }])
-    } else if (nodeClass === 'code') {
-        addNodes([{
-            id: `node_${Date.now()}`,
-            type: 'code',
-            position,
-            data: { code: '', inputs: [] }
-        }])
-    }
+    
+    const position = screenToFlowCoordinate({
+        x: event.clientX,
+        y: event.clientY,
+    })
+
+    if (nodeClass === 'action') addActionNode(type)
+    else if (nodeClass === 'logic') addLogicNode(type as any)
+    else if (nodeClass === 'code') addNodes([{ 
+        id: `node_${Date.now()}`, 
+        type: 'code', 
+        position, 
+        data: { 
+            code: '', 
+            inputs: [], 
+            referenceData: referenceData.value,
+            onUpdateData: handleActionDataChange
+        } 
+    }])
 }
 
 const save = async () => {
     const flow: any = toObject()
-    const triggerNode = nodes.value.find((n: Node) => n.type === 'trigger')
+    const triggerNode = nodes.value.find((n: any) => n.type === 'trigger')
     if (triggerNode) {
         flow.trigger_event = triggerNode.data.event
         flow.trigger_aggregate_id = triggerNode.data.aggregateId
     }
+
     try {
         await api.updateReaction(pipelineId, flow)
         alert('Pipeline lagret og publisert!')
@@ -293,7 +299,7 @@ const save = async () => {
 }
 
 const deletePipeline = async () => {
-    if (!confirm('Er du sikker på at du vil slette denne pipelinen permanent?')) return
+    if (!confirm('Er du sikker på at du vil slette denne pipelinen?')) return
     try {
         await api.deleteReaction(pipelineId)
         router.back()
@@ -316,7 +322,6 @@ const runTest = async () => {
         isTesting.value = true
         testLogs.value = ['Starter test...']
         
-        // Clear old logs from all code nodes
         nodes.value.forEach(node => {
             if (node.type === 'code') updateNodeData(node.id, { logs: [] })
         })
@@ -337,9 +342,6 @@ const runTest = async () => {
         
         if (res.logs) {
             testLogs.value.push(...res.logs)
-            
-            // Heuristic: If logs contain node IDs or specific JS errors, 
-            // try to route them to the specific Code node
             res.logs.forEach((log: string) => {
                 nodes.value.forEach(node => {
                     if (node.type === 'code' && (log.includes(node.id) || log.includes('JS Error'))) {
@@ -396,7 +398,14 @@ onMounted(async () => {
         </div>
     </header>
 
-    <div class="flex-1 flex overflow-hidden min-h-0">
+    <div class="flex-1 flex overflow-hidden min-h-0 relative">
+        <div v-if="loading" class="absolute inset-0 z-[60] bg-orange-50/80 backdrop-blur-sm flex items-center justify-center">
+            <div class="flex flex-col items-center gap-4">
+                <div class="w-16 h-16 border-8 border-black border-t-yellow-400 animate-spin"></div>
+                <p class="font-black uppercase italic tracking-tighter">Henter Pipeline...</p>
+            </div>
+        </div>
+        
         <aside class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)] shrink-0">
             <section class="space-y-4">
                 <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Logikk</h4>
@@ -436,8 +445,8 @@ onMounted(async () => {
 
         <main class="flex-1 relative overflow-hidden min-w-0" @dragover.prevent @drop="onDrop">
             <VueFlow 
-                v-if="nodesInitialized"
-                id="main"
+                v-model:nodes="nodes"
+                v-model:edges="edges"
                 :node-types="nodeTypes"
                 :is-valid-connection="checkValidConnection"
                 fit-view-on-init
@@ -445,7 +454,7 @@ onMounted(async () => {
             >
                 <Background pattern-color="#000" :gap="20" />
                 <Controls position="bottom-right" />
-                <MiniMap v-if="nodesInitialized" pannable zoomable class="!border-4 !border-black !rounded-none !shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] !bg-white" />
+                <MiniMap pannable zoomable class="!border-4 !border-black !rounded-none !shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] !bg-white" />
             </VueFlow>
         </main>
     </div>

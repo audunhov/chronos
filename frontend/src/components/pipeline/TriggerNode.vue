@@ -17,18 +17,18 @@ const props = defineProps<NodeProps<{
     <div class="mb-4 space-y-2">
         <p class="text-[8px] font-black uppercase text-purple-600">Start (Trigger)</p>
         <select 
-            :value="data.event" 
-            @change="(e: any) => data.onUpdateEvent?.(e.target.value)"
+            :value="props.data.event" 
+            @change="(e: any) => props.data.onUpdateEvent?.(e.target.value)"
             class="w-full bg-white border-4 border-black p-1 font-black uppercase italic text-xs focus:outline-none focus:bg-yellow-400"
         >
-            <option v-for="ev in data.availableEvents || []" :key="ev" :value="ev">{{ ev }}</option>
+            <option v-for="ev in props.data.availableEvents || []" :key="ev" :value="ev">{{ ev }}</option>
         </select>
 
-        <div v-if="data.event === 'TimedSchedule'" class="space-y-1 mt-2">
+        <div v-if="props.data.event === 'TimedSchedule'" class="space-y-1 mt-2">
             <p class="text-[8px] font-black uppercase text-gray-500">Intervall (Cron/Kort)</p>
             <select 
-                :value="data.aggregateId || ''" 
-                @change="(e: any) => data.onUpdateAggregate?.(e.target.value)"
+                :value="props.data.aggregateId || ''" 
+                @change="(e: any) => props.data.onUpdateAggregate?.(e.target.value)"
                 class="w-full bg-white border-2 border-black p-1 font-mono text-[10px] focus:outline-none focus:bg-yellow-400"
             >
                 <option value="">Velg intervall...</option>
@@ -39,21 +39,21 @@ const props = defineProps<NodeProps<{
             </select>
         </div>
 
-        <div v-if="data.event === 'FormResponseSubmitted'" class="space-y-1 mt-2">
+        <div v-if="props.data.event === 'FormResponseSubmitted'" class="space-y-1 mt-2">
             <p class="text-[8px] font-black uppercase text-gray-500">Skjema</p>
             <select 
-                :value="data.aggregateId || ''" 
-                @change="(e: any) => data.onUpdateAggregate?.(e.target.value)"
+                :value="props.data.aggregateId || ''" 
+                @change="(e: any) => props.data.onUpdateAggregate?.(e.target.value)"
                 class="w-full bg-white border-2 border-black p-1 font-mono text-[10px] focus:outline-none focus:bg-yellow-400"
             >
                 <option value="">Velg skjema...</option>
-                <option v-for="f in data.forms || []" :key="f.id" :value="f.id">{{ f.title }}</option>
+                <option v-for="f in props.data.forms || []" :key="f.id" :value="f.id">{{ f.title }}</option>
             </select>
         </div>
     </div>
 
     <div class="space-y-3">
-        <div v-for="out in data.outputs" :key="out" class="flex justify-between items-center relative group">
+        <div v-for="out in props.data.outputs" :key="out" class="flex justify-between items-center relative group">
             <div class="flex items-center gap-1">
                 <div class="w-1 h-1 bg-purple-400"></div>
                 <span class="text-[9px] font-bold font-mono tracking-tighter">{{ out }}</span>

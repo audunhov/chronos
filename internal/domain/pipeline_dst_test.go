@@ -8,7 +8,7 @@ import (
 
 func TestPipelineDST(t *testing.T) {
 	// Standard DST pattern: run multiple simulations with different seeds
-	for seed := int64(1); seed <= 100; seed++ {
+	for seed := int64(1); seed <= 500; seed++ {
 		t.Run(fmt.Sprintf("Seed_%d", seed), func(t *testing.T) {
 			simulateComplexPipeline(t, seed)
 		})

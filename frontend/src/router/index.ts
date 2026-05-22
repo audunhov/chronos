@@ -16,6 +16,7 @@ import FormManager from '../components/FormManager.vue'
 import ReactionManager from '../components/ReactionManager.vue'
 import OrganListManager from '../components/OrganListManager.vue'
 import AuditTrail from '../components/AuditTrail.vue'
+import SecretsManager from '../components/SecretsManager.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -59,6 +60,7 @@ const router = createRouter({
         { path: 'pipelines', component: ReactionManager },
         { path: 'organs', component: OrganListManager },
         { path: 'audit', component: AuditTrail },
+        { path: 'secrets', component: SecretsManager },
       ]
     }
   ],

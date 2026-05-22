@@ -89,6 +89,13 @@ func main() {
 	apiMux.HandleFunc("/admin/pipelines/executions", server.GetPipelineExecutionsHandler)
 	apiMux.HandleFunc("/admin/pipelines/test", server.TestPipelineHandler)
 	apiMux.HandleFunc("/admin/search", server.GlobalSearchHandler)
+	apiMux.HandleFunc("/admin/secrets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			server.CreateSecretHandler(w, r)
+		} else {
+			server.GetSecretsHandler(w, r)
+		}
+	})
 	apiMux.HandleFunc("/admin/organs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			server.CreateOrganHandler(w, r)

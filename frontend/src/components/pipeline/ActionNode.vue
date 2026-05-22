@@ -10,23 +10,26 @@ const props = defineProps<NodeProps<{
     referenceData?: {
         organizations: any[];
         organs: any[];
+        secrets: any[];
         roles: string[];
     };
     onUpdateData?: (key: string, val: any) => void;
     highlightClass?: string;
     // Dynamic values stored in data
     [key: string]: any;
-}>>()
+    }>>()
 
-const isConnected = (id: string) => props.data.connectedInputs?.has(id)
+    const isConnected = (id: string) => props.data.connectedInputs?.has(id)
 
-// Helper to determine if an input should show a dropdown
-const getOptionsForInput = (inp: string) => {
+    // Helper to determine if an input should show a dropdown
+    const getOptionsForInput = (inp: string) => {
     if (inp === 'org_id' || inp === 'start_org_id') return props.data.referenceData?.organizations.map(o => ({ label: o.name, value: o.id }))
     if (inp === 'organ_id' || inp === 'organ_name') return props.data.referenceData?.organs.map(o => ({ label: o.name, value: o.id }))
-    if (inp === 'role_name' || inp === 'role_type') return props.data.referenceData?.roles.map(r => ({ label: r, value: r }))
+    if (inp === 'role_type' || inp === 'role_name') return props.data.referenceData?.roles.map(r => ({ label: r, value: r }))
+    if (inp === 'secret_id') return props.data.referenceData?.secrets.map(s => ({ label: s.name, value: s.id }))
     return null
-}
+    }
+
 </script>
 
 <template>

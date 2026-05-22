@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"register/internal/domain"
 	"time"
 
@@ -41,6 +44,7 @@ func (w *ReactionWorker) GetOperations(db domain.DBExecutor) map[string]func(inp
 		"ListFilter":     func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opListFilter(in)) },
 		"ForEach":        w.opForEach,
 		"Collect":        w.opCollect,
+		"HTTPRequest":    func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opHTTPRequestTx(db, in)) },
 		"RegisterMember": func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opRegisterMemberTx(db, in)) },
 		"CreateForm":     func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opCreateFormTx(db, in)) },
 		"code":           func(in map[string]any) ([]map[string]any, string, error) { return w.wrap(w.opCode(in)) },
@@ -206,6 +210,43 @@ func (w *ReactionWorker) opFindOrganTx(db domain.DBExecutor, inputs map[string]a
 	err := db.QueryRow("SELECT id FROM organs WHERE org_id = $1 AND name = $2", orgID, name).Scan(&id)
 	if err != nil { return nil, "", err }
 	return map[string]any{"organ_id": id}, "default", nil
+}
+
+func (w *ReactionWorker) opHTTPRequestTx(db domain.DBExecutor, inputs map[string]any) (map[string]any, string, error) {
+	url, _ := inputs["url"].(string)
+	method, _ := inputs["method"].(string)
+	if method == "" { method = "POST" }
+	payloadStr, _ := inputs["payload"].(string)
+	secretID, _ := inputs["secret_id"].(string)
+
+	if url == "" { return nil, "", fmt.Errorf("missing url") }
+
+	req, err := http.NewRequest(method, url, bytes.NewBuffer([]byte(payloadStr)))
+	if err != nil { return nil, "", err }
+
+	req.Header.Set("Content-Type", "application/json")
+
+	if secretID != "" {
+		var enc []byte
+		err := db.QueryRow("SELECT encrypted_value FROM secrets WHERE id = $1", secretID).Scan(&enc)
+		if err == nil {
+			dec, err := Decrypt(enc)
+			if err == nil {
+				req.Header.Set("Authorization", "Bearer " + string(dec))
+			}
+		}
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil { return nil, "", err }
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var respData any
+	json.Unmarshal(bodyBytes, &respData)
+
+	return map[string]any{"status": resp.StatusCode, "response": respData}, "default", nil
 }
 
 func (w *ReactionWorker) opFindRoleTx(db domain.DBExecutor, inputs map[string]any) (map[string]any, string, error) {

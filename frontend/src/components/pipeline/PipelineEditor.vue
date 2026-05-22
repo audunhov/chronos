@@ -43,6 +43,7 @@ const ACTION_DEFS: Record<string, { inputs: string[], outputs: string[] }> = {
     ForEach: { inputs: ['list'], outputs: ['item'] },
     Collect: { inputs: ['value'], outputs: ['collected_item'] },
     FormatText: { inputs: ['template', 'user_name', 'org_name'], outputs: ['result'] },
+    HTTPRequest: { inputs: ['url', 'method', 'payload', 'secret_id'], outputs: ['status', 'response'] },
 }
 
 const route = useRoute()
@@ -61,6 +62,7 @@ const forms = ref<any[]>([])
 const referenceData = ref({
     organizations: [] as any[],
     organs: [] as any[],
+    secrets: [] as any[],
     roles: ['Leader', 'Deputy', 'Secretary', 'Treasurer', 'Member']
 })
 
@@ -70,17 +72,19 @@ const fetchPipeline = async () => {
         const orgId = route.query.org_id as string
         const targetPipelineId = isHistoryMode ? (route.query.pipeline_id as string) : pipelineId
 
-        const [data, formsData, orgsData, organsData, execsData] = await Promise.all([
+        const [data, formsData, orgsData, organsData, execsData, secretsData] = await Promise.all([
             api.getReactions(orgId),
             api.getForms().catch(() => []),
             api.getOrganizationHierarchy().catch(() => []),
             api.getOrgans(orgId).catch(() => []),
-            isHistoryMode ? api.getPipelineExecutions(orgId) : Promise.resolve([])
+            isHistoryMode ? api.getPipelineExecutions(orgId) : Promise.resolve([]),
+            api.getSecrets(orgId).catch(() => [])
         ])
         
         forms.value = Array.isArray(formsData) ? formsData : []
         referenceData.value.organizations = Array.isArray(orgsData) ? orgsData : []
         referenceData.value.organs = Array.isArray(organsData) ? organsData : []
+        referenceData.value.secrets = Array.isArray(secretsData) ? secretsData : []
 
         if (isHistoryMode) {
             execution.value = Array.isArray(execsData) ? execsData.find(e => e.id === executionId) : null

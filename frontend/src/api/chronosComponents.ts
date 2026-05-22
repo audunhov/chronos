@@ -356,6 +356,59 @@ export const globalSearch = (
     {}
   >({ url: "/api/admin/search", method: "get", ...variables, signal });
 
+export type GetSecretsQueryParams = {
+  org_id: string;
+};
+
+export type GetSecretsError = Fetcher.ErrorWrapper<undefined>;
+
+export type GetSecretsResponse = {
+  id?: string;
+  name?: string;
+}[];
+
+export type GetSecretsVariables = {
+  queryParams: GetSecretsQueryParams;
+};
+
+export const getSecrets = (
+  variables: GetSecretsVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    GetSecretsResponse,
+    GetSecretsError,
+    undefined,
+    {},
+    GetSecretsQueryParams,
+    {}
+  >({ url: "/api/admin/secrets", method: "get", ...variables, signal });
+
+export type CreateSecretError = Fetcher.ErrorWrapper<undefined>;
+
+export type CreateSecretRequestBody = {
+  org_id: string;
+  name: string;
+  value: string;
+};
+
+export type CreateSecretVariables = {
+  body: CreateSecretRequestBody;
+};
+
+export const createSecret = (
+  variables: CreateSecretVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    undefined,
+    CreateSecretError,
+    CreateSecretRequestBody,
+    {},
+    {},
+    {}
+  >({ url: "/api/admin/secrets", method: "post", ...variables, signal });
+
 export type GetOrgansQueryParams = {
   org_id: string;
 };

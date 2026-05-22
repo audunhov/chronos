@@ -532,6 +532,75 @@ func (s *Server) GlobalSearchHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(results)
 }
 
+func (s *Server) GetSecretsHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	if orgID == "" {
+		http.Error(w, "Missing org_id", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name FROM secrets WHERE org_id = $1 ORDER BY name", orgID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type Secret struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
+	var results []Secret
+	for rows.Next() {
+		var sec Secret
+		if err := rows.Scan(&sec.ID, &sec.Name); err == nil {
+			results = append(results, sec)
+		}
+	}
+
+	if results == nil {
+		results = []Secret{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (s *Server) CreateSecretHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrgID string `json:"org_id"`
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	encrypted, err := storage.Encrypt([]byte(req.Value))
+	if err != nil {
+		http.Error(w, "Encryption failed", http.StatusInternalServerError)
+		return
+	}
+
+	var id string
+	err = s.db.QueryRowContext(r.Context(), `
+		INSERT INTO secrets (org_id, name, encrypted_value)
+		VALUES ($1, $2, $3)
+		RETURNING id`,
+		req.OrgID, req.Name, encrypted).Scan(&id)
+	
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
 func (s *Server) GetOrgansHandler(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
 	if orgID == "" {

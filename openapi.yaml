@@ -345,6 +345,58 @@ paths:
                     subtitle:
                       type: string
 
+  /api/admin/secrets:
+    get:
+      operationId: getSecrets
+      summary: Get list of secrets (Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of secrets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+    post:
+      operationId: createSecret
+      summary: Create a new secret
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - org_id
+                - name
+                - value
+              properties:
+                org_id:
+                  type: string
+                name:
+                  type: string
+                value:
+                  type: string
+      responses:
+        '201':
+          description: Secret created
+          
   /api/admin/organs:
     get:
       operationId: getOrgans

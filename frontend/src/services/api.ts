@@ -84,6 +84,10 @@ export const api = {
     assignOrganMember: (data: { organ_id: string, user_id: string, role_type: string }) => chronos.assignOrganMember({ body: data }),
     revokeOrganMember: (id: string) => chronos.revokeOrganMember({ queryParams: { id } }),
 
+    // Secrets
+    getSecrets: (orgId: string) => chronos.getSecrets({ queryParams: { org_id: orgId } }),
+    createSecret: (data: any) => chronos.createSecret({ body: data }),
+
     // Forms
     getForms: (orgId?: string) => {
         const queryParams: any = {};

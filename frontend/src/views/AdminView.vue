@@ -85,6 +85,15 @@ const route = useRoute()
                     AUDIT LOG
                 </BButton>
             </router-link>
+            <router-link to="/admin/secrets" custom v-slot="{ navigate, isExactActive }">
+                <BButton 
+                    @click="navigate"
+                    :variant="isExactActive ? 'primary' : 'ghost'"
+                    class="text-sm uppercase italic"
+                >
+                    NØKLER (SECRETS)
+                </BButton>
+            </router-link>
         </nav>
     </div>
 

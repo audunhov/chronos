@@ -56,7 +56,7 @@ export const api = {
     reconcileTreasury: (file: File) => {
         const formData = new FormData()
         formData.append('file', file)
-        return fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/treasury/reconcile`, {
+        return fetch('/api/admin/treasury/reconcile', {
             method: 'POST',
             body: formData,
             headers: {

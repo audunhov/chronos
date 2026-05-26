@@ -34,7 +34,7 @@ const responses = ref<FormResponse[]>([])
 
 const triggerExport = (format: 'csv' | 'xlsx') => {
     if (!viewingResponsesFor.value) return
-    const url = `${import.meta.env.VITE_API_URL || '/api'}/admin/form-responses/export?form_id=${viewingResponsesFor.value.id}&format=${format}`
+    const url = `/api/admin/form-responses/export?form_id=${viewingResponsesFor.value.id}&format=${format}`
     
     // Create a temporary link to trigger download with Auth header via fetch or simple window.open if security allows
     // Since this is a GET request with query params, we need to pass the token. 

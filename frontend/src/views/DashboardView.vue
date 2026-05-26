@@ -54,13 +54,17 @@ onMounted(fetchMyMemberships)
                 </BBadge>
             </div>
             <div class="mt-8 pt-6 border-t-4 border-black flex justify-between items-end">
-                <div>
+                <div v-if="(ms.balance || 0) < 0">
                     <p class="text-[10px] font-black uppercase text-gray-500 mb-1">Ditt utestående:</p>
-                    <p :class="['text-3xl font-black italic', (ms.balance || 0) < 0 ? 'text-red-600' : 'text-black']">
-                        {{ ((ms.balance || 0) / 100).toFixed(2) }} <small class="text-sm not-italic">NOK</small>
+                    <p class="text-3xl font-black italic text-red-600">
+                        {{ (Math.abs(ms.balance || 0) / 100).toFixed(2) }} <small class="text-sm not-italic">NOK</small>
                     </p>
                 </div>
-                <BButton variant="primary" class="text-[10px] px-3 py-1">BETAL</BButton>
+                <div v-else>
+                    <p class="text-[10px] font-black uppercase text-green-600 mb-1">Økonomi:</p>
+                    <p class="text-3xl font-black italic text-black uppercase tracking-tighter">BETALT</p>
+                </div>
+                <BButton v-if="(ms.balance || 0) < 0" variant="primary" class="text-[10px] px-3 py-1">BETAL</BButton>
             </div>
         </div>
     </div>

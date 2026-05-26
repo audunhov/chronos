@@ -47,7 +47,7 @@ func (w *EmailWorker) processOutbox(ctx context.Context) error {
 		FROM email_outbox o
 		LEFT JOIN email_templates t ON o.template_id = t.id
 		WHERE o.status = 'PENDING'
-		FOR UPDATE SKIP LOCKED
+		FOR UPDATE OF o SKIP LOCKED
 		LIMIT 10`)
 	if err != nil {
 		return err

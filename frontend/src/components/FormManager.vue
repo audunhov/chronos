@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import * as XLSX from 'xlsx'
 import { api } from '../services/api'
 import type { Form, EventReaction, FormResponse } from '../api'
 import BCard from './base/BCard.vue'
@@ -30,6 +31,56 @@ const dependentReactions = ref<EventReaction[]>([])
 // Response Viewer state
 const viewingResponsesFor = ref<Form | null>(null)
 const responses = ref<FormResponse[]>([])
+
+const exportCSV = () => {
+    if (!viewingResponsesFor.value || responses.value.length === 0) return
+    
+    const fields = (viewingResponsesFor.value.schema as any).fields
+    const headers = ['Medlem', 'E-post', ...fields.map((f: any) => f.label), 'Innsendt']
+    
+    const rows = responses.value.map(r => [
+        r.user_name,
+        r.user_email,
+        ...fields.map((f: any) => r.answers?.[f.name] || ''),
+        new Date(r.created_at || '').toLocaleString()
+    ])
+    
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${viewingResponsesFor.value.title}_svar.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+}
+
+const exportXLSX = () => {
+    if (!viewingResponsesFor.value || responses.value.length === 0) return
+    
+    const fields = (viewingResponsesFor.value.schema as any).fields
+    const data = responses.value.map(r => {
+        const row: any = {
+            'Medlem': r.user_name,
+            'E-post': r.user_email,
+            'Innsendt': new Date(r.created_at || '').toLocaleString()
+        }
+        fields.forEach((f: any) => {
+            row[f.label] = r.answers?.[f.name] || ''
+        })
+        return row
+    })
+    
+    const worksheet = XLSX.utils.json_to_sheet(data)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Svar")
+    XLSX.writeFile(workbook, `${viewingResponsesFor.value.title}_svar.xlsx`)
+}
 
 const addField = () => {
     newFormFields.value.push({ name: '', label: '', type: 'text', options: '' })
@@ -305,12 +356,16 @@ onMounted(() => {
 
         <!-- Form Responses View -->
         <div v-if="viewingResponsesFor" class="space-y-8 animate-in fade-in">
-            <div class="flex justify-between items-center border-b-4 border-black pb-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-black pb-4 gap-4">
                 <div>
                     <h3 class="text-3xl font-black uppercase italic tracking-tighter leading-none">{{ viewingResponsesFor.title }}</h3>
                     <p class="text-xs font-bold uppercase text-gray-400 mt-2">Innsendte svar fra medlemmer</p>
                 </div>
-                <BButton @click="viewingResponsesFor = null" variant="secondary" class="text-xs">← TILBAKE</BButton>
+                <div class="flex flex-wrap gap-2">
+                    <BButton @click="exportCSV" variant="secondary" class="text-[10px] py-1">EKSPORTER CSV</BButton>
+                    <BButton @click="exportXLSX" variant="primary" class="text-[10px] py-1 shadow-[2px_2px_0px_0px_white]">EKSPORTER XLSX</BButton>
+                    <BButton @click="viewingResponsesFor = null" variant="secondary" class="text-[10px] py-1 ml-4 border-2 border-black">← TILBAKE</BButton>
+                </div>
             </div>
 
             <div class="overflow-x-auto border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">

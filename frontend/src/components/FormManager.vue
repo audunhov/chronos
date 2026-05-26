@@ -34,33 +34,10 @@ const responses = ref<FormResponse[]>([])
 
 const triggerExport = (format: 'csv' | 'xlsx') => {
     if (!viewingResponsesFor.value) return
-    const url = `/api/admin/form-responses/export?form_id=${viewingResponsesFor.value.id}&format=${format}`
-    
-    // Create a temporary link to trigger download with Auth header via fetch or simple window.open if security allows
-    // Since this is a GET request with query params, we need to pass the token. 
-    // For simplicity in this prototype, we'll fetch as blob.
-    
-    loading.value = true
-    fetch(url, {
-        headers: {
-            'Authorization': `Bearer ${auth.token}`
-        }
-    })
-    .then(res => {
-        if (!res.ok) throw new Error('Export failed')
-        return res.blob()
-    })
-    .then(blob => {
-        const downloadUrl = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = downloadUrl
-        a.download = `${viewingResponsesFor.value?.title}.${format}`
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-    })
-    .catch(e => alert(e.message))
-    .finally(() => loading.value = false)
+    api.exportData('form-responses', { 
+        form_id: viewingResponsesFor.value.id!, 
+        format 
+    }, `${viewingResponsesFor.value.title}.${format}`)
 }
 
 const addField = () => {

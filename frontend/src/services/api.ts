@@ -111,6 +111,28 @@ export const api = {
     deleteForm: (id: string) => chronos.deleteForm({ queryParams: { id } }),
     submitForm: (formId: string, answers: any) => chronos.submitForm({ body: { form_id: formId, answers } }),
     
+    // Exports
+    exportData: (path: string, params: Record<string, string>, filename: string) => {
+        const query = new URLSearchParams(params).toString();
+        const url = `/api/admin/${path}/export?${query}`;
+        return fetch(url, {
+            headers: { 'Authorization': `Bearer ${auth.token}` }
+        })
+        .then(res => {
+            if (!res.ok) throw new Error('Export failed');
+            return res.blob();
+        })
+        .then(blob => {
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        });
+    },
+
     // Member Management
     registerMember: (data: any) => chronos.registerMember({ body: data }),
     updateMember: (id: string, fields: any) => chronos.updateMember({ 

@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { api } from '../services/api'
 import type { AuditLogEntry } from '../api'
 import BSelect from './base/BSelect.vue'
+import BButton from './base/BButton.vue'
 import BCard from './base/BCard.vue'
 import BBadge from './base/BBadge.vue'
 
@@ -38,10 +39,16 @@ onMounted(fetchLogs)
     <div class="space-y-8">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 class="text-4xl font-black uppercase italic tracking-tighter">System Audit Trail</h2>
-            <BSelect v-model="selectedOrg" label="Filter på organisasjon" class="min-w-[300px]">
-                <option value="">ALLE (GLOBAL)</option>
-                <option v-for="org in orgs" :key="org.id" :value="org.id">{{ org.name }}</option>
-            </BSelect>
+            <div class="flex items-end gap-4">
+                <BSelect v-model="selectedOrg" label="Filter på organisasjon" class="min-w-[300px]">
+                    <option value="">ALLE (GLOBAL)</option>
+                    <option v-for="org in orgs" :key="org.id" :value="org.id">{{ org.name }}</option>
+                </BSelect>
+                <div class="flex gap-2">
+                    <BButton @click="api.exportData('audit', { org_id: selectedOrg, format: 'csv' }, 'audit_log.csv')" variant="secondary" class="text-[10px] py-1">CSV</BButton>
+                    <BButton @click="api.exportData('audit', { org_id: selectedOrg, format: 'xlsx' }, 'audit_log.xlsx')" variant="primary" class="text-[10px] py-1 shadow-[4px_4px_0px_0px_white]">XLSX</BButton>
+                </div>
+            </div>
         </div>
 
         <div class="border-4 border-black shadow-[16px_16px_0px_0px_rgba(0,0,0,1)] overflow-hidden">

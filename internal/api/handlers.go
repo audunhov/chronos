@@ -1058,6 +1058,160 @@ func (s *Server) ShredMemberHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) ExportMembersHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	format := r.URL.Query().Get("format")
+
+	query := `
+		SELECT name, email, org_id, status, balance, created_at
+		FROM membership_view`
+	var args []any
+	if orgID != "" {
+		query += " WHERE org_id = $1"
+		args = append(args, orgID)
+	}
+	query += " ORDER BY name ASC"
+
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	headers := []string{"Navn", "E-post", "Org ID", "Status", "Saldo (øre)", "Opprettet"}
+	dataFetcher := func(rows *sql.Rows) ([]string, []any, error) {
+		var name, email, orgID, status string
+		var balance int
+		var createdAt time.Time
+		err := rows.Scan(&name, &email, &orgID, &status, &balance, &createdAt)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []string{name, email, orgID, status, fmt.Sprintf("%d", balance), createdAt.Format("2006-01-02 15:04")},
+			[]any{name, email, orgID, status, balance, createdAt.Format("2006-01-02 15:04")}, nil
+	}
+
+	s.streamExport(w, "medlemmer", format, headers, rows, dataFetcher)
+}
+
+func (s *Server) ExportAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
+	orgID := r.URL.Query().Get("org_id")
+	format := r.URL.Query().Get("format")
+
+	query := `SELECT created_at, action, actor_email, org_name, target_id, metadata FROM audit_logs`
+	var args []any
+	if orgID != "" {
+		query += " WHERE org_id = $1"
+		args = append(args, orgID)
+	}
+	query += " ORDER BY created_at DESC LIMIT 1000"
+
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	headers := []string{"Tidspunkt", "Handling", "Aktør", "Organisasjon", "Mål ID", "Metadata"}
+	dataFetcher := func(rows *sql.Rows) ([]string, []any, error) {
+		var createdAt time.Time
+		var action, actorEmail, targetID string
+		var orgName sql.NullString
+		var metadata []byte
+		err := rows.Scan(&createdAt, &action, &actorEmail, &orgName, &targetID, &metadata)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []string{createdAt.Format("2006-01-02 15:04"), action, actorEmail, orgName.String, targetID, string(metadata)},
+			[]any{createdAt.Format("2006-01-02 15:04"), action, actorEmail, orgName.String, targetID, string(metadata)}, nil
+	}
+
+	s.streamExport(w, "audit_log", format, headers, rows, dataFetcher)
+}
+
+func (s *Server) ExportOrganMembersHandler(w http.ResponseWriter, r *http.Request) {
+	organID := r.URL.Query().Get("organ_id")
+	format := r.URL.Query().Get("format")
+
+	if organID == "" {
+		http.Error(w, "Missing organ_id", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		SELECT u.name, u.email, ra.role_type, ra.created_at
+		FROM role_assignments ra
+		JOIN users u ON ra.user_id = u.id
+		WHERE ra.organ_id = $1
+		ORDER BY u.name ASC`
+
+	rows, err := s.db.QueryContext(r.Context(), query, organID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	headers := []string{"Navn", "E-post", "Rolle", "Oppnevnt"}
+	dataFetcher := func(rows *sql.Rows) ([]string, []any, error) {
+		var name, email, roleType string
+		var createdAt time.Time
+		err := rows.Scan(&name, &email, &roleType, &createdAt)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []string{name, email, roleType, createdAt.Format("2006-01-02 15:04")},
+			[]any{name, email, roleType, createdAt.Format("2006-01-02 15:04")}, nil
+	}
+
+	s.streamExport(w, "organ_medlemmer", format, headers, rows, dataFetcher)
+}
+
+// Helper to stream export data
+func (s *Server) streamExport(w http.ResponseWriter, filename, format string, headers []string, rows *sql.Rows, fetcher func(*sql.Rows) ([]string, []any, error)) {
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.csv\"", filename))
+		writer := csv.NewWriter(w)
+		writer.Write(headers)
+		for rows.Next() {
+			csvRow, _, err := fetcher(rows)
+			if err == nil {
+				writer.Write(csvRow)
+			}
+		}
+		writer.Flush()
+	} else {
+		f := excelize.NewFile()
+		sheet := "Sheet1"
+		style, _ := f.NewStyle(&excelize.Style{
+			Font: &excelize.Font{Bold: true},
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#E0E0E0"}, Pattern: 1},
+		})
+		for i, h := range headers {
+			col, _ := excelize.ColumnNumberToName(i + 1)
+			f.SetCellValue(sheet, col+"1", h)
+		}
+		f.SetRowStyle(sheet, 1, 1, style)
+		rowIdx := 2
+		for rows.Next() {
+			_, xlsxRow, err := fetcher(rows)
+			if err == nil {
+				for i, val := range xlsxRow {
+					col, _ := excelize.ColumnNumberToName(i + 1)
+					f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, rowIdx), val)
+				}
+				rowIdx++
+			}
+		}
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.xlsx\"", filename))
+		f.Write(w)
+	}
+}
+
 func (s *Server) ExportFormResponsesHandler(w http.ResponseWriter, r *http.Request) {
 	formID := r.URL.Query().Get("form_id")
 	format := r.URL.Query().Get("format")

@@ -487,6 +487,85 @@ paths:
         '200':
           description: Organ deleted
 
+  /api/admin/members/export:
+    get:
+      operationId: exportMembers
+      summary: Export members list (CSV or XLSX)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          schema:
+            type: string
+        - in: query
+          name: format
+          required: true
+          schema:
+            type: string
+            enum: [csv, xlsx]
+      responses:
+        '200':
+          description: Exported file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /api/admin/audit/export:
+    get:
+      operationId: exportAuditLogs
+      summary: Export audit logs (CSV or XLSX)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: org_id
+          schema:
+            type: string
+        - in: query
+          name: format
+          required: true
+          schema:
+            type: string
+            enum: [csv, xlsx]
+      responses:
+        '200':
+          description: Exported file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /api/admin/organ-members/export:
+    get:
+      operationId: exportOrganMembers
+      summary: Export members of an organ (CSV or XLSX)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: organ_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: format
+          required: true
+          schema:
+            type: string
+            enum: [csv, xlsx]
+      responses:
+        '200':
+          description: Exported file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
   /api/admin/organ-members:
     get:
       operationId: getOrganMembers

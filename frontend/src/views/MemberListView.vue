@@ -112,7 +112,11 @@ onMounted(() => {
             <BInput v-model="selectedDate" type="date" label="Historisk dato (As-Of)" class="bg-black text-white border-white" />
             
             <div class="flex gap-2">
-                <BButton @click="fetchMembers()" variant="secondary" class="italic">OPPDATER</BButton>
+                <BButton @click="fetchMembers()" variant="secondary" class="italic text-[10px] py-1">OPPDATER</BButton>
+                <div class="flex border-l-2 border-white ml-2 pl-4 gap-2">
+                    <BButton @click="api.exportData('members', { org_id: selectedOrg, format: 'csv' }, 'medlemmer.csv')" variant="ghost" class="text-white text-[10px] py-1 border-white italic">CSV</BButton>
+                    <BButton @click="api.exportData('members', { org_id: selectedOrg, format: 'xlsx' }, 'medlemmer.xlsx')" variant="ghost" class="text-white text-[10px] py-1 border-white italic">XLSX</BButton>
+                </div>
                 <BButton 
                     v-if="selectedMemberIds.size > 0"
                     @click="showEmailComposer = true" 

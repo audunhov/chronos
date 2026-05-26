@@ -164,16 +164,18 @@ onMounted(() => {
                     <h3 class="text-4xl font-black uppercase italic tracking-tighter leading-none">{{ selectedOrgan.name }}</h3>
                     <p class="text-xs font-bold uppercase text-gray-400 mt-1 italic">Administrasjon av medlemmer og roller</p>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2">
+                    <BButton @click="api.exportData('organ-members', { organ_id: selectedOrgan.id, format: 'csv' }, `${selectedOrgan.name}.csv`)" variant="secondary" class="text-[10px] py-1">CSV</BButton>
+                    <BButton @click="api.exportData('organ-members', { organ_id: selectedOrgan.id, format: 'xlsx' }, `${selectedOrgan.name}.xlsx`)" variant="primary" class="text-[10px] py-1 shadow-[2px_2px_0px_0px_white]">XLSX</BButton>
                     <BButton 
                         v-if="organMembers.length > 0"
                         @click="showEmailComposer = true" 
                         variant="primary" 
-                        class="bg-blue-600 border-black hover:bg-blue-500 text-xs py-2 px-4"
+                        class="bg-blue-600 border-black hover:bg-blue-500 text-[10px] py-1 px-4 ml-4"
                     >
                         SEND E-POST TIL ALLE
                     </BButton>
-                    <BButton @click="showAddMember = true" variant="primary" class="text-xs py-2 px-4">+ LEGG TIL MEDLEM</BButton>
+                    <BButton @click="showAddMember = true" variant="primary" class="text-[10px] py-1 px-4">+ LEGG TIL MEDLEM</BButton>
                 </div>
             </header>
 

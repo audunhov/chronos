@@ -1063,14 +1063,14 @@ func (s *Server) ExportMembersHandler(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 
 	query := `
-		SELECT name, email, org_id, status, balance, created_at
+		SELECT user_name, user_email, org_id, status, balance, updated_at
 		FROM membership_view`
 	var args []any
 	if orgID != "" {
 		query += " WHERE org_id = $1"
 		args = append(args, orgID)
 	}
-	query += " ORDER BY name ASC"
+	query += " ORDER BY user_name ASC"
 
 	rows, err := s.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
@@ -1079,17 +1079,17 @@ func (s *Server) ExportMembersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	headers := []string{"Navn", "E-post", "Org ID", "Status", "Saldo (øre)", "Opprettet"}
+	headers := []string{"Navn", "E-post", "Org ID", "Status", "Saldo (øre)", "Oppdatert"}
 	dataFetcher := func(rows *sql.Rows) ([]string, []any, error) {
 		var name, email, orgID, status string
 		var balance int
-		var createdAt time.Time
-		err := rows.Scan(&name, &email, &orgID, &status, &balance, &createdAt)
+		var updatedAt time.Time
+		err := rows.Scan(&name, &email, &orgID, &status, &balance, &updatedAt)
 		if err != nil {
 			return nil, nil, err
 		}
-		return []string{name, email, orgID, status, fmt.Sprintf("%d", balance), createdAt.Format("2006-01-02 15:04")},
-			[]any{name, email, orgID, status, balance, createdAt.Format("2006-01-02 15:04")}, nil
+		return []string{name, email, orgID, status, fmt.Sprintf("%d", balance), updatedAt.Format("2006-01-02 15:04")},
+			[]any{name, email, orgID, status, balance, updatedAt.Format("2006-01-02 15:04")}, nil
 	}
 
 	s.streamExport(w, "medlemmer", format, headers, rows, dataFetcher)
@@ -1099,13 +1099,18 @@ func (s *Server) ExportAuditLogsHandler(w http.ResponseWriter, r *http.Request) 
 	orgID := r.URL.Query().Get("org_id")
 	format := r.URL.Query().Get("format")
 
-	query := `SELECT created_at, action, actor_email, org_name, target_id, metadata FROM audit_logs`
+	query := `
+		SELECT l.created_at, l.action, u.email as actor_email, o.name as org_name, l.target_id, l.detail
+		FROM audit_logs l
+		LEFT JOIN users u ON l.actor_id = u.id
+		LEFT JOIN organization_hierarchy o ON l.org_id = o.id`
+	
 	var args []any
 	if orgID != "" {
-		query += " WHERE org_id = $1"
+		query += " WHERE l.org_id = $1"
 		args = append(args, orgID)
 	}
-	query += " ORDER BY created_at DESC LIMIT 1000"
+	query += " ORDER BY l.created_at DESC LIMIT 1000"
 
 	rows, err := s.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
@@ -1114,18 +1119,18 @@ func (s *Server) ExportAuditLogsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	defer rows.Close()
 
-	headers := []string{"Tidspunkt", "Handling", "Aktør", "Organisasjon", "Mål ID", "Metadata"}
+	headers := []string{"Tidspunkt", "Handling", "Aktør", "Organisasjon", "Mål ID", "Detaljer"}
 	dataFetcher := func(rows *sql.Rows) ([]string, []any, error) {
 		var createdAt time.Time
-		var action, actorEmail, targetID string
-		var orgName sql.NullString
-		var metadata []byte
-		err := rows.Scan(&createdAt, &action, &actorEmail, &orgName, &targetID, &metadata)
+		var action, targetID string
+		var actorEmail, orgName sql.NullString
+		var detail []byte
+		err := rows.Scan(&createdAt, &action, &actorEmail, &orgName, &targetID, &detail)
 		if err != nil {
 			return nil, nil, err
 		}
-		return []string{createdAt.Format("2006-01-02 15:04"), action, actorEmail, orgName.String, targetID, string(metadata)},
-			[]any{createdAt.Format("2006-01-02 15:04"), action, actorEmail, orgName.String, targetID, string(metadata)}, nil
+		return []string{createdAt.Format("2006-01-02 15:04"), action, actorEmail.String, orgName.String, targetID, string(detail)},
+			[]any{createdAt.Format("2006-01-02 15:04"), action, actorEmail.String, orgName.String, targetID, string(detail)}, nil
 	}
 
 	s.streamExport(w, "audit_log", format, headers, rows, dataFetcher)

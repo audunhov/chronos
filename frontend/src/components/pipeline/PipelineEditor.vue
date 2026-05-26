@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, markRaw, computed, watch } from 'vue'
+import { ref, onMounted, markRaw, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { VueFlow, useVueFlow, useNodesInitialized, type Node, type Edge, type Connection } from '@vue-flow/core'
+import { VueFlow, useVueFlow, useNodesInitialized, type Node, type Edge, type Connection, type NodeChange, type EdgeChange } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -52,7 +52,13 @@ const pipelineId = route.params.id as string
 const isHistoryMode = route.name === 'pipeline-history'
 const executionId = route.params.id as string
 
-const { nodes, edges, onConnect, addEdges, addNodes, removeEdges, updateNodeData, toObject, project, screenToFlowCoordinate } = useVueFlow()
+// Initialize Vue Flow
+const { 
+    nodes, edges, onConnect, addEdges, addNodes, removeEdges, 
+    updateNodeData, toObject, project, screenToFlowCoordinate,
+    onNodesChange, onEdgesChange, fitView, findNode
+} = useVueFlow()
+
 const nodesInitialized = useNodesInitialized()
 
 const loading = ref(false)
@@ -65,6 +71,21 @@ const referenceData = ref({
     secrets: [] as any[],
     roles: ['Leader', 'Deputy', 'Secretary', 'Treasurer', 'Member']
 })
+
+const handleTriggerEventChange = (newEvent: string) => {
+    updateTriggerOutputs(newEvent, findNode('trigger')?.data?.aggregateId)
+}
+
+const handleTriggerAggregateChange = (newAgg: string) => {
+    const trigger = findNode('trigger')
+    if (trigger) {
+        updateTriggerOutputs(trigger.data.event, newAgg)
+    }
+}
+
+const handleActionDataChange = (nodeId: string, key: string, val: any) => {
+    updateNodeData(nodeId, { [key]: val })
+}
 
 const fetchPipeline = async () => {
     loading.value = true
@@ -93,10 +114,14 @@ const fetchPipeline = async () => {
         const r = Array.isArray(data) ? data.find(item => item.id === targetPipelineId) : null
         if (r && r.config) {
             reaction.value = r
+            
+            // Map nodes with necessary data and callbacks
             const mappedNodes = (r.config.nodes || []).map((n: any) => {
-                const node = {
+                const node: Node = {
                     ...n,
-                    position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 }
+                    position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 },
+                    // Ensure basic properties exist to avoid undefined crashes
+                    dimensions: n.dimensions || { width: 0, height: 0 }
                 }
                 
                 let highlightClass = ''
@@ -112,6 +137,13 @@ const fetchPipeline = async () => {
                     }
                 }
 
+                node.data = {
+                    ...node.data,
+                    highlightClass,
+                    referenceData: referenceData.value,
+                    onUpdateData: isHistoryMode ? undefined : handleActionDataChange
+                }
+
                 if (node.type === 'trigger') {
                     node.data = {
                         ...node.data,
@@ -120,14 +152,6 @@ const fetchPipeline = async () => {
                         forms: forms.value,
                         onUpdateEvent: isHistoryMode ? undefined : handleTriggerEventChange,
                         onUpdateAggregate: isHistoryMode ? undefined : handleTriggerAggregateChange,
-                        highlightClass
-                    }
-                } else if (node.type === 'action' || node.type === 'logic' || node.type === 'code') {
-                    node.data = {
-                        ...node.data,
-                        referenceData: referenceData.value,
-                        onUpdateData: isHistoryMode ? undefined : handleActionDataChange,
-                        highlightClass
                     }
                 }
                 
@@ -138,11 +162,18 @@ const fetchPipeline = async () => {
                 
                 return node
             })
+
             nodes.value = mappedNodes
             edges.value = r.config.edges || []
+            
             if (r.trigger_event) {
                 await updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
             }
+
+            // Sync connected status initially
+            nextTick(() => {
+                updateAllConnectedInputs()
+            })
         }
     } catch (e) {
         console.error(e)
@@ -174,42 +205,41 @@ const updateTriggerOutputs = async (event: string, aggregateId?: string) => {
     })
 }
 
-const handleTriggerEventChange = (newEvent: string) => {
-    const triggerNode = nodes.value.find((n: Node) => n.type === 'trigger')
-    if (triggerNode) {
-        updateTriggerOutputs(newEvent, triggerNode.data.aggregateId)
-    }
-}
-
-const handleTriggerAggregateChange = (newAgg: string) => {
-    const triggerNode = nodes.value.find((n: Node) => n.type === 'trigger')
-    if (triggerNode) {
-        updateTriggerOutputs(triggerNode.data.event, newAgg)
-    }
-}
-
-const handleActionDataChange = (nodeId: string, key: string, val: any) => {
-    updateNodeData(nodeId, { [key]: val })
-}
-
-// Watch for edge changes to update node connection status
-watch(edges, () => {
+const updateAllConnectedInputs = () => {
     nodes.value.forEach(node => {
         const edgesToNode = edges.value.filter(e => e.target === node.id)
         const connectedInputs = new Set(edgesToNode.map(e => e.targetHandle))
-        if (JSON.stringify(Array.from(node.data.connectedInputs || [])) !== JSON.stringify(Array.from(connectedInputs))) {
+        
+        // We use stringify comparison to avoid redundant reactive updates
+        const current = Array.from(node.data.connectedInputs || []).sort().join(',')
+        const next = Array.from(connectedInputs).sort().join(',')
+        
+        if (current !== next) {
             updateNodeData(node.id, { connectedInputs })
         }
     })
-}, { deep: true })
+}
 
+// Vue Flow Event Handlers
 onConnect((params: any) => {
     addEdges([params])
+    nextTick(updateAllConnectedInputs)
+})
+
+onEdgesChange(() => {
+    nextTick(updateAllConnectedInputs)
+})
+
+// Auto-fit view when nodes are initialized
+watch(nodesInitialized, (isInit) => {
+    if (isInit) {
+        fitView({ padding: 0.2 })
+    }
 })
 
 const checkValidConnection = (connection: Connection) => {
     if (connection.source === connection.target) return false;
-    const targetNode = nodes.value.find(n => n.id === connection.target);
+    const targetNode = findNode(connection.target);
     if (targetNode?.type === 'trigger') return false;
     return true;
 }
@@ -304,17 +334,20 @@ const onDrop = (event: DragEvent) => {
 
     if (nodeClass === 'action') addActionNode(type)
     else if (nodeClass === 'logic') addLogicNode(type as any)
-    else if (nodeClass === 'code') addNodes([{ 
-        id: `node_${Date.now()}`, 
-        type: 'code', 
-        position, 
-        data: { 
-            code: '', 
-            inputs: [], 
-            referenceData: referenceData.value,
-            onUpdateData: handleActionDataChange
-        } 
-    }])
+    else if (nodeClass === 'code') {
+        const id = `node_${Date.now()}`
+        addNodes([{ 
+            id, 
+            type: 'code', 
+            position, 
+            data: { 
+                code: '', 
+                inputs: [], 
+                referenceData: referenceData.value,
+                onUpdateData: (key: string, val: any) => handleActionDataChange(id, key, val)
+            } 
+        }])
+    }
 }
 
 const save = async () => {
@@ -395,7 +428,10 @@ const runTest = async () => {
 
 const deleteSelected = () => {
     const selectedEdges = edges.value.filter((e: any) => e.selected)
+    const selectedNodes = nodes.value.filter((n: any) => n.selected && n.type !== 'trigger')
     removeEdges(selectedEdges)
+    // VueFlow handles node deletion via its internal state if we let it,
+    // but we can explicitly trigger it if needed.
 }
 
 onMounted(async () => {
@@ -427,9 +463,9 @@ onMounted(async () => {
             <h1 class="text-3xl font-black uppercase italic tracking-tighter leading-none">Visual Pipeline Builder</h1>
         </div>
         <div class="flex gap-4">
-            <BButton @click="deletePipeline" variant="danger" class="text-xs py-2 px-6">SLETT PIPELINE</BButton>
+            <BButton v-if="!isHistoryMode" @click="deletePipeline" variant="danger" class="text-xs py-2 px-6">SLETT PIPELINE</BButton>
             <BButton @click="openTestModal" variant="secondary" class="text-xs py-2 px-6">TEST KJØRING</BButton>
-            <BButton @click="save" variant="primary" class="text-xs py-2 px-10 shadow-[4px_4px_0px_0px_white]">PUBLISER ENDRINGER</BButton>
+            <BButton v-if="!isHistoryMode" @click="save" variant="primary" class="text-xs py-2 px-10 shadow-[4px_4px_0px_0px_white]">PUBLISER ENDRINGER</BButton>
         </div>
     </header>
 
@@ -441,13 +477,13 @@ onMounted(async () => {
             </div>
         </div>
         
-        <aside class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)] shrink-0">
+        <aside v-if="!isHistoryMode" class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)] shrink-0">
             <section class="space-y-4">
                 <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Logikk</h4>
                 <div class="grid grid-cols-2 gap-2">
                     <button draggable="true" @dragstart="onDragStart($event, 'if', 'logic')" @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 font-black italic cursor-grab">IF / THEN</button>
                     <button draggable="true" @dragstart="onDragStart($event, 'list_filter', 'logic')" @click="addLogicNode('list_filter')" class="brutalist-btn bg-blue-100 text-[10px] p-2 hover:bg-blue-200 font-black italic cursor-grab">FILTER (LIST)</button>
-                    <button draggable="true" @dragstart="onDragStart($event, 'javascript', 'code')" @click="addNodes([{ id: `node_${Date.now()}`, type: 'code', position: { x: 400, y: 100 }, data: { code: '', inputs: [] } }])" class="brutalist-btn bg-gray-900 text-white text-[10px] p-2 hover:bg-black font-black italic cursor-grab col-span-2">CUSTOM JS CODE</button>
+                    <button draggable="true" @dragstart="onDragStart($event, 'javascript', 'code')" @click="onDrop({ clientX: 400, clientY: 200, dataTransfer: { getData: () => JSON.stringify({ type: 'javascript', nodeClass: 'code' }) } } as any)" class="brutalist-btn bg-gray-900 text-white text-[10px] p-2 hover:bg-black font-black italic cursor-grab col-span-2">CUSTOM JS CODE</button>
                 </div>
             </section>
             <section class="space-y-4">
@@ -480,11 +516,11 @@ onMounted(async () => {
 
         <main class="flex-1 relative overflow-hidden min-w-0" @dragover.prevent @drop="onDrop">
             <VueFlow 
-                v-model:nodes="nodes"
-                v-model:edges="edges"
+                id="main"
+                :nodes="nodes"
+                :edges="edges"
                 :node-types="nodeTypes"
                 :is-valid-connection="checkValidConnection"
-                fit-view-on-init
                 class="brutalist-flow"
             >
                 <Background pattern-color="#000" :gap="20" />

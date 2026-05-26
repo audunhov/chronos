@@ -548,6 +548,33 @@ paths:
         '200':
           description: Member removed
 
+  /api/admin/form-responses/export:
+    get:
+      operationId: exportFormResponses
+      summary: Export all responses for a form (CSV or XLSX)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: form_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: format
+          required: true
+          schema:
+            type: string
+            enum: [csv, xlsx]
+      responses:
+        '200':
+          description: Exported file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
   /api/admin/form-responses:
     get:
       operationId: getFormResponses

@@ -591,6 +591,35 @@ export const revokeOrganMember = (
     signal,
   });
 
+export type ExportFormResponsesQueryParams = {
+  form_id: string;
+  format: "csv" | "xlsx";
+};
+
+export type ExportFormResponsesError = Fetcher.ErrorWrapper<undefined>;
+
+export type ExportFormResponsesVariables = {
+  queryParams: ExportFormResponsesQueryParams;
+};
+
+export const exportFormResponses = (
+  variables: ExportFormResponsesVariables,
+  signal?: AbortSignal,
+) =>
+  chronosFetch<
+    Blob,
+    ExportFormResponsesError,
+    undefined,
+    {},
+    ExportFormResponsesQueryParams,
+    {}
+  >({
+    url: "/api/admin/form-responses/export",
+    method: "get",
+    ...variables,
+    signal,
+  });
+
 export type GetFormResponsesQueryParams = {
   form_id: string;
 };

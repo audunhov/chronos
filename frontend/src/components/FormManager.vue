@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import * as XLSX from 'xlsx'
 import { api } from '../services/api'
+import { auth } from '../services/auth'
 import type { Form, EventReaction, FormResponse } from '../api'
 import BCard from './base/BCard.vue'
 import BButton from './base/BButton.vue'
@@ -32,54 +32,35 @@ const dependentReactions = ref<EventReaction[]>([])
 const viewingResponsesFor = ref<Form | null>(null)
 const responses = ref<FormResponse[]>([])
 
-const exportCSV = () => {
-    if (!viewingResponsesFor.value || responses.value.length === 0) return
+const triggerExport = (format: 'csv' | 'xlsx') => {
+    if (!viewingResponsesFor.value) return
+    const url = `${import.meta.env.VITE_API_URL || '/api'}/admin/form-responses/export?form_id=${viewingResponsesFor.value.id}&format=${format}`
     
-    const fields = (viewingResponsesFor.value.schema as any).fields
-    const headers = ['Medlem', 'E-post', ...fields.map((f: any) => f.label), 'Innsendt']
+    // Create a temporary link to trigger download with Auth header via fetch or simple window.open if security allows
+    // Since this is a GET request with query params, we need to pass the token. 
+    // For simplicity in this prototype, we'll fetch as blob.
     
-    const rows = responses.value.map(r => [
-        r.user_name,
-        r.user_email,
-        ...fields.map((f: any) => r.answers?.[f.name] || ''),
-        new Date(r.created_at || '').toLocaleString()
-    ])
-    
-    const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', `${viewingResponsesFor.value.title}_svar.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-}
-
-const exportXLSX = () => {
-    if (!viewingResponsesFor.value || responses.value.length === 0) return
-    
-    const fields = (viewingResponsesFor.value.schema as any).fields
-    const data = responses.value.map(r => {
-        const row: any = {
-            'Medlem': r.user_name,
-            'E-post': r.user_email,
-            'Innsendt': new Date(r.created_at || '').toLocaleString()
+    loading.value = true
+    fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${auth.token}`
         }
-        fields.forEach((f: any) => {
-            row[f.label] = r.answers?.[f.name] || ''
-        })
-        return row
     })
-    
-    const worksheet = XLSX.utils.json_to_sheet(data)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Svar")
-    XLSX.writeFile(workbook, `${viewingResponsesFor.value.title}_svar.xlsx`)
+    .then(res => {
+        if (!res.ok) throw new Error('Export failed')
+        return res.blob()
+    })
+    .then(blob => {
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = downloadUrl
+        a.download = `${viewingResponsesFor.value?.title}.${format}`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+    })
+    .catch(e => alert(e.message))
+    .finally(() => loading.value = false)
 }
 
 const addField = () => {
@@ -362,8 +343,8 @@ onMounted(() => {
                     <p class="text-xs font-bold uppercase text-gray-400 mt-2">Innsendte svar fra medlemmer</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <BButton @click="exportCSV" variant="secondary" class="text-[10px] py-1">EKSPORTER CSV</BButton>
-                    <BButton @click="exportXLSX" variant="primary" class="text-[10px] py-1 shadow-[2px_2px_0px_0px_white]">EKSPORTER XLSX</BButton>
+                    <BButton @click="triggerExport('csv')" variant="secondary" class="text-[10px] py-1">EKSPORTER CSV</BButton>
+                    <BButton @click="triggerExport('xlsx')" variant="primary" class="text-[10px] py-1 shadow-[4px_4px_0px_0px_white]">EKSPORTER XLSX</BButton>
                     <BButton @click="viewingResponsesFor = null" variant="secondary" class="text-[10px] py-1 ml-4 border-2 border-black">← TILBAKE</BButton>
                 </div>
             </div>

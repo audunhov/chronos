@@ -126,6 +126,7 @@ func main() {
 	apiMux.HandleFunc("/audit/logs", server.GetAuditLogsHandler)
 	apiMux.HandleFunc("/forms", server.GetFormsHandler)
 	apiMux.HandleFunc("/admin/form-responses", server.GetFormResponsesHandler)
+	apiMux.HandleFunc("/admin/form-responses/export", server.ExportFormResponsesHandler)
 	apiMux.HandleFunc("/commands/create-form", server.CreateFormHandler)
 	apiMux.HandleFunc("/commands/update-form", server.UpdateFormHandler)
 	apiMux.HandleFunc("/commands/delete-form", server.DeleteFormHandler)

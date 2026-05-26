@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"github.com/xuri/excelize/v2"
 )
 
 type Server struct {
@@ -1054,6 +1056,125 @@ func (s *Server) ShredMemberHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) ExportFormResponsesHandler(w http.ResponseWriter, r *http.Request) {
+	formID := r.URL.Query().Get("form_id")
+	format := r.URL.Query().Get("format")
+
+	if formID == "" || (format != "csv" && format != "xlsx") {
+		http.Error(w, "Invalid parameters", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Hent skjema for å vite kolonne-navn
+	var formTitle string
+	var schemaJSON []byte
+	err := s.db.QueryRowContext(r.Context(), "SELECT title, schema FROM forms WHERE id = $1", formID).Scan(&formTitle, &schemaJSON)
+	if err != nil {
+		http.Error(w, "Form not found", http.StatusNotFound)
+		return
+	}
+
+	var schema struct {
+		Fields []struct {
+			Name  string `json:"name"`
+			Label string `json:"label"`
+		} `json:"fields"`
+	}
+	json.Unmarshal(schemaJSON, &schema)
+
+	// 2. Hent alle svar
+	query := `
+		SELECT u.name, u.email, fr.answers, fr.created_at
+		FROM form_responses fr
+		JOIN users u ON fr.user_id = u.id
+		WHERE fr.form_id = $1
+		ORDER BY fr.created_at ASC`
+	
+	rows, err := s.db.QueryContext(r.Context(), query, formID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	headers := []string{"Medlem", "E-post"}
+	for _, f := range schema.Fields {
+		headers = append(headers, f.Label)
+	}
+	headers = append(headers, "Innsendt")
+
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.csv\"", formTitle))
+		
+		writer := csv.NewWriter(w)
+		writer.Write(headers)
+
+		for rows.Next() {
+			var name, email string
+			var answersJSON []byte
+			var createdAt time.Time
+			rows.Scan(&name, &email, &answersJSON, &createdAt)
+
+			var answers map[string]any
+			json.Unmarshal(answersJSON, &answers)
+
+			row := []string{name, email}
+			for _, f := range schema.Fields {
+				val := answers[f.Name]
+				row = append(row, fmt.Sprintf("%v", val))
+			}
+			row = append(row, createdAt.Format("2006-01-02 15:04"))
+			writer.Write(row)
+		}
+		writer.Flush()
+	} else {
+		f := excelize.NewFile()
+		sheet := "Svar"
+		f.SetSheetName("Sheet1", sheet)
+		
+		// Header style
+		style, _ := f.NewStyle(&excelize.Style{
+			Font: &excelize.Font{Bold: true},
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#E0E0E0"}, Pattern: 1},
+		})
+
+		// Skriv headers
+		for i, h := range headers {
+			col, _ := excelize.ColumnNumberToName(i + 1)
+			f.SetCellValue(sheet, col+"1", h)
+		}
+		f.SetRowStyle(sheet, 1, 1, style)
+
+		rowIdx := 2
+		for rows.Next() {
+			var name, email string
+			var answersJSON []byte
+			var createdAt time.Time
+			rows.Scan(&name, &email, &answersJSON, &createdAt)
+
+			var answers map[string]any
+			json.Unmarshal(answersJSON, &answers)
+
+			f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIdx), name)
+			f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIdx), email)
+			
+			for i, field := range schema.Fields {
+				col, _ := excelize.ColumnNumberToName(i + 3)
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, rowIdx), answers[field.Name])
+			}
+			
+			lastCol, _ := excelize.ColumnNumberToName(len(headers))
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", lastCol, rowIdx), createdAt.Format("2006-01-02 15:04"))
+			rowIdx++
+		}
+
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.xlsx\"", formTitle))
+		f.Write(w)
+	}
 }
 
 func (s *Server) GetFormResponsesHandler(w http.ResponseWriter, r *http.Request) {

@@ -9,7 +9,7 @@
       :placeholder="placeholder"
       :value="modelValue"
       :required="required"
-      class="border-4 border-black p-3 font-mono focus:outline-none focus:bg-blue-50 focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all placeholder:text-gray-400"
+      class="bg-white text-black border-4 border-black p-3 font-mono focus:outline-none focus:bg-blue-50 focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all placeholder:text-gray-400"
       :class="props.class"
       @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />

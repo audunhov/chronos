@@ -104,12 +104,12 @@ onMounted(() => {
 <template>
     <div class="space-y-8 animate-in fade-in">
         <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-            <BSelect v-model="selectedOrg" label="Org-Filter" class="bg-black text-white border-white min-w-[250px]">
+            <BSelect v-model="selectedOrg" label="Org-Filter" class="min-w-[250px]">
                 <option value="">ALLE ORGANISASJONER</option>
                 <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
             </BSelect>
 
-            <BInput v-model="selectedDate" type="date" label="Historisk dato (As-Of)" class="bg-black text-white border-white" />
+            <BInput v-model="selectedDate" type="date" label="Historisk dato (As-Of)" />
             
             <div class="flex gap-2">
                 <BButton @click="fetchMembers()" variant="secondary" class="italic text-[10px] py-1">OPPDATER</BButton>

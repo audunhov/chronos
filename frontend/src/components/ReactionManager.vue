@@ -115,7 +115,7 @@ onMounted(() => {
 
         <div v-if="activeTab === 'pipelines'" class="space-y-8 animate-in fade-in duration-300">
             <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-                <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="bg-black text-white border-white min-w-[300px]">
+                <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="min-w-[300px]">
                     <option v-for="org in orgs" :key="org.id" :value="org.id">{{ org.name }}</option>
                 </BSelect>
                 <div class="flex gap-2">
@@ -167,7 +167,7 @@ onMounted(() => {
 
         <div v-else-if="activeTab === 'history'" class="space-y-8 animate-in fade-in duration-300">
             <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-                <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="bg-black text-white border-white min-w-[300px]">
+                <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="min-w-[300px]">
                     <option v-for="org in orgs" :key="org.id" :value="org.id">{{ org.name }}</option>
                 </BSelect>
                 <BButton @click="fetchExecutions" variant="secondary" class="italic text-xs py-2 shadow-[4px_4px_0px_0px_white]">OPPDATER HISTORIKK</BButton>

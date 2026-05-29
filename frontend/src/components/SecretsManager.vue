@@ -60,7 +60,7 @@ onMounted(() => {
         </header>
 
         <div class="flex flex-wrap gap-6 items-end bg-black text-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-            <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="bg-black text-white border-white min-w-[300px]">
+            <BSelect v-model="selectedOrg" label="Velg Organisasjon" class="min-w-[300px]">
                 <option v-for="org in orgs" :key="org.id" :value="org.id">{{ org.name }}</option>
             </BSelect>
             <BButton @click="showCreate = true" variant="primary" class="italic text-xs py-2">+ LEGG TIL NØKKEL</BButton>

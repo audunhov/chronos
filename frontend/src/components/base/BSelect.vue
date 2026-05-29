@@ -7,7 +7,7 @@
       :id="id"
       :value="modelValue"
       :required="required"
-      class="border-4 border-black p-3 font-mono focus:outline-none focus:bg-blue-50 focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all bg-white"
+      class="bg-white text-black border-4 border-black p-3 font-mono focus:outline-none focus:bg-blue-50 focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
       :class="props.class"
       @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
     >

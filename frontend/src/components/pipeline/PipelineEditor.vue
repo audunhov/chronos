@@ -56,10 +56,23 @@ const executionId = route.params.id as string
 
 // Initialize Vue Flow
 const { 
-    nodes, edges, onConnect, addEdges, addNodes, removeEdges, 
+    nodes, edges, onConnect, addEdges, addNodes, removeEdges, removeNodes,
     updateNodeData, toObject, project, screenToFlowCoordinate,
-    onNodesChange, onEdgesChange, fitView, findNode, setCenter
+    fitView, findNode, setCenter, onPaneReady
 } = useVueFlow('main')
+
+const safeFitView = () => {
+    try {
+        fitView({ padding: 0.2, duration: 800 })
+    } catch (e) {
+        console.warn('fitView failed, viewport probably not ready:', e)
+    }
+}
+
+onPaneReady(() => {
+    console.log('Vue Flow Pane Ready')
+    setTimeout(safeFitView, 200)
+})
 
 const getNodeColor = (node: any) => {
     if (node.type === 'trigger') return '#a855f7'
@@ -180,6 +193,7 @@ const fetchPipeline = async () => {
                 return node
             })
 
+            // Initialize state via assignments (allowed for reactive refs from hook)
             nodes.value = mappedNodes
             edges.value = (r.config.edges || []).map((e: any) => ({
                 ...e,
@@ -196,6 +210,7 @@ const fetchPipeline = async () => {
             // Sync connected status initially
             nextTick(() => {
                 updateAllConnectedInputs()
+                setTimeout(safeFitView, 500)
             })
         }
         dataLoaded.value = true
@@ -243,7 +258,6 @@ const updateAllConnectedInputs = () => {
         }
     })
 }
-
 // Vue Flow Event Handlers
 onConnect((params: any) => {
     addEdges([{
@@ -256,24 +270,14 @@ onConnect((params: any) => {
     nextTick(updateAllConnectedInputs)
 })
 
-onNodesChange((changes) => {
-    applyNodeChanges(changes, nodes.value)
-})
-
-onEdgesChange((changes) => {
-    applyEdgeChanges(changes, edges.value)
-    nextTick(updateAllConnectedInputs)
-})
-
 const dataLoaded = ref(false)
 
+const fetchPipeline = async () => {
 // Auto-fit view when nodes are initialized
 watch(nodesInitialized, (isInit) => {
     if (isInit && nodes.value.length > 0) {
         nextTick(() => {
-            setTimeout(() => {
-                fitView({ padding: 0.2, duration: 800 })
-            }, 500)
+            setTimeout(safeFitView, 500)
         })
     }
 })
@@ -449,7 +453,7 @@ const usePreset = (preset: any) => {
     }))
 
     nextTick(() => {
-        fitView({ padding: 0.2, duration: 800 })
+        setTimeout(safeFitView, 500)
     })
 }
 
@@ -534,10 +538,10 @@ const deleteSelected = () => {
     const selectedNodes = nodes.value.filter((n: any) => n.selected && n.type !== 'trigger')
     
     if (selectedEdges.length > 0) {
-        edges.value = edges.value.filter(e => !selectedEdges.some(se => se.id === e.id))
+        removeEdges(selectedEdges)
     }
     if (selectedNodes.length > 0) {
-        nodes.value = nodes.value.filter(n => !selectedNodes.some(sn => sn.id === n.id))
+        removeNodes(selectedNodes)
     }
     
     nextTick(updateAllConnectedInputs)
@@ -663,8 +667,6 @@ onMounted(async () => {
             <VueFlow 
                 v-if="dataLoaded"
                 id="main"
-                :nodes="nodes"
-                :edges="edges"
                 :node-types="nodeTypes"
                 :is-valid-connection="checkValidConnection"
                 class="brutalist-flow"

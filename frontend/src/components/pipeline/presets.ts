@@ -7,6 +7,7 @@ export const PIPELINE_PRESETS = [
                 id: "trigger",
                 type: "trigger",
                 position: { x: 50, y: 150 },
+                dimensions: { width: 220, height: 150 },
                 data: { event: "MembershipCreated", outputs: ["user_id", "org_id", "role", "timestamp"] }
             },
             {
@@ -47,6 +48,7 @@ export const PIPELINE_PRESETS = [
                 id: "trigger",
                 type: "trigger",
                 position: { x: 50, y: 200 },
+                dimensions: { width: 220, height: 150 },
                 data: { event: "TimedSchedule", aggregateId: "weekly", outputs: ["timestamp", "source"] }
             },
             {

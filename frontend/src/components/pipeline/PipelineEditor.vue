@@ -543,20 +543,20 @@ const deleteSelected = () => {
 onMounted(async () => {
     await fetchPipeline()
     if (nodes.value.length === 0) {
-        addNodes([{ 
-            id: 'trigger', 
-            type: 'trigger', 
+        addNodes([{
+            id: 'trigger',
+            type: 'trigger',
             position: { x: 50, y: 50 },
-            data: { 
-                event: 'MembershipCreated', 
+            dimensions: { width: 220, height: 150 },
+            data: {
+                event: 'MembershipCreated',
                 outputs: TRIGGER_VAR_MAP['MembershipCreated'],
                 availableEvents: Object.keys(TRIGGER_VAR_MAP),
                 forms: forms.value,
                 onUpdateEvent: handleTriggerEventChange,
                 onUpdateAggregate: handleTriggerAggregateChange
             }
-        }])
-    }
+        }])    }
 })
 </script>
 

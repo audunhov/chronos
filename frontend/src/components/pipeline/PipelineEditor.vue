@@ -529,9 +529,15 @@ const runTest = async () => {
 const deleteSelected = () => {
     const selectedEdges = edges.value.filter((e: any) => e.selected)
     const selectedNodes = nodes.value.filter((n: any) => n.selected && n.type !== 'trigger')
-    removeEdges(selectedEdges)
-    // VueFlow handles node deletion via its internal state if we let it,
-    // but we can explicitly trigger it if needed.
+    
+    if (selectedEdges.length > 0) {
+        edges.value = edges.value.filter(e => !selectedEdges.some(se => se.id === e.id))
+    }
+    if (selectedNodes.length > 0) {
+        nodes.value = nodes.value.filter(n => !selectedNodes.some(sn => sn.id === n.id))
+    }
+    
+    nextTick(updateAllConnectedInputs)
 }
 
 onMounted(async () => {

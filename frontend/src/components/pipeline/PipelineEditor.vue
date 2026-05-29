@@ -179,7 +179,13 @@ const fetchPipeline = async () => {
             })
 
             nodes.value = mappedNodes
-            edges.value = r.config.edges || []
+            edges.value = (r.config.edges || []).map((e: any) => ({
+                ...e,
+                type: 'smoothstep',
+                animated: true,
+                markerEnd: { type: 'arrowclosed', color: '#000' },
+                style: { strokeWidth: 4, stroke: '#000' }
+            }))
             
             if (r.trigger_event) {
                 await updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
@@ -237,7 +243,13 @@ const updateAllConnectedInputs = () => {
 
 // Vue Flow Event Handlers
 onConnect((params: any) => {
-    addEdges([params])
+    addEdges([{
+        ...params,
+        type: 'smoothstep',
+        animated: true,
+        markerEnd: { type: 'arrowclosed', color: '#000' },
+        style: { strokeWidth: 4, stroke: '#000' }
+    }])
     nextTick(updateAllConnectedInputs)
 })
 

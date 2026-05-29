@@ -137,8 +137,8 @@ const fetchPipeline = async () => {
                 const node: Node = {
                     ...n,
                     position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 },
-                    // Ensure basic properties exist to avoid undefined crashes
-                    dimensions: n.dimensions || { width: 0, height: 0 }
+                    // Ensure basic properties exist to avoid undefined crashes. Use 1x1 as min to avoid NaN
+                    dimensions: n.dimensions || { width: 200, height: 150 }
                 }
                 
                 let highlightClass = ''
@@ -198,6 +198,7 @@ const fetchPipeline = async () => {
                 updateAllConnectedInputs()
             })
         }
+        dataLoaded.value = true
     } catch (e) {
         console.error(e)
     } finally {
@@ -254,6 +255,17 @@ onConnect((params: any) => {
     }])
     nextTick(updateAllConnectedInputs)
 })
+
+onNodesChange((changes) => {
+    applyNodeChanges(changes, nodes.value)
+})
+
+onEdgesChange((changes) => {
+    applyEdgeChanges(changes, edges.value)
+    nextTick(updateAllConnectedInputs)
+})
+
+const dataLoaded = ref(false)
 
 // Auto-fit view when nodes are initialized
 watch(nodesInitialized, (isInit) => {
@@ -649,7 +661,10 @@ onMounted(async () => {
 
         <main class="flex-1 relative overflow-hidden min-w-0" @dragover.prevent @drop="onDrop">
             <VueFlow 
+                v-if="dataLoaded"
                 id="main"
+                :nodes="nodes"
+                :edges="edges"
                 :node-types="nodeTypes"
                 :is-valid-connection="checkValidConnection"
                 class="brutalist-flow"

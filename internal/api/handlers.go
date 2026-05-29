@@ -472,6 +472,7 @@ func (s *Server) CreateReactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
+		log.Printf("Reaction creation/update error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -726,6 +727,7 @@ func (s *Server) AssignOrganMemberHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
+		log.Printf("Reaction creation/update error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -779,6 +781,7 @@ func (s *Server) CreateOrganHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.eventStore.Append(r.Context(), id, 1, event); err != nil {
+		log.Printf("Reaction creation/update error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

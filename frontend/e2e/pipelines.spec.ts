@@ -22,16 +22,15 @@ test.describe('Visual Pipeline Editor E2E', () => {
     
     // Verifiser at noder er lagt til i navigatoren
     await expect(page.locator('.vue-flow__node-trigger')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'fmt_welcome' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'send_mail' })).toBeVisible();
-
-    // Sjekk at navigatoren lister nodene
+    
+    // Sjekk at navigatoren lister nodene med deres LABELS
     const navigator = page.locator('aside section').filter({ hasText: 'Navigator' });
-    await expect(navigator.getByText('FormatText')).toBeVisible();
+    await expect(navigator.getByRole('button', { name: 'FormatText' })).toBeVisible();
+    await expect(navigator.getByRole('button', { name: 'SendEmail' })).toBeVisible();
 
-    // Sjekk validering: send_mail skal ha feil fordi inputs ikke er satt
-    // Vi ser etter den røde rammen eller feilmeldingene
-    await expect(page.locator('.vue-flow__node-action').filter({ hasText: 'Mangler inndata' }).first()).toBeVisible();
+    // Sjekk validering: SendEmail skal ha feil fordi inputs ikke er satt
+    const sendMailNode = page.locator('.vue-flow__node-action').filter({ hasText: 'SendEmail' });
+    await expect(sendMailNode.getByText('Mangler to_email')).toBeVisible({ timeout: 10000 });
   });
 
   test('skal kunne fokusere noder via navigatoren', async ({ page }) => {
@@ -43,7 +42,7 @@ test.describe('Visual Pipeline Editor E2E', () => {
 
     // Klikk på en node i navigatoren
     const navigator = page.locator('aside section').filter({ hasText: 'Navigator' });
-    await navigator.getByRole('button', { name: 'send_mail' }).click();
+    await navigator.getByRole('button', { name: 'SendEmail' }).click();
     
     // Her er det vanskelig å verifisere nøyaktig zoom/pan i E2E uten dypere Vue Flow integrasjon,
     // men vi verifiserer at knappen er trykkbar og ikke kræsjer applikasjonen.

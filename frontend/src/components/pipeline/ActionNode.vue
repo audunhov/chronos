@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
 
-const props = defineProps<NodeProps<{
+interface ActionNodeData {
     label: string;
     inputs: string[];
     outputs: string[];
@@ -15,20 +15,28 @@ const props = defineProps<NodeProps<{
     };
     onUpdateData?: (key: string, val: any) => void;
     highlightClass?: string;
-    // Dynamic values stored in data
+    hasError?: boolean;
+    errorMessages?: string[];
     [key: string]: any;
-    }>>()
+}
 
-    const isConnected = (id: string) => props.data.connectedInputs?.has(id)
+const props = withDefaults(defineProps<NodeProps<ActionNodeData>>(), {
+    selected: false,
+    resizing: false,
+    dragging: false,
+    connectable: true,
+})
 
-    // Helper to determine if an input should show a dropdown
-    const getOptionsForInput = (inp: string) => {
-    if (inp === 'org_id' || inp === 'start_org_id') return props.data.referenceData?.organizations.map(o => ({ label: o.name, value: o.id }))
-    if (inp === 'organ_id' || inp === 'organ_name') return props.data.referenceData?.organs.map(o => ({ label: o.name, value: o.id }))
-    if (inp === 'role_type' || inp === 'role_name') return props.data.referenceData?.roles.map(r => ({ label: r, value: r }))
-    if (inp === 'secret_id') return props.data.referenceData?.secrets.map(s => ({ label: s.name, value: s.id }))
-    return null
-    }
+const isConnected = (id: string) => props.data.connectedInputs?.has(id)
+
+// Helper to determine if an input should show a dropdown
+const getOptionsForInput = (inp: string) => {
+if (inp === 'org_id' || inp === 'start_org_id') return props.data.referenceData?.organizations.map(o => ({ label: o.name, value: o.id }))
+if (inp === 'organ_id' || inp === 'organ_name') return props.data.referenceData?.organs.map(o => ({ label: o.name, value: o.id }))
+if (inp === 'role_type' || inp === 'role_name') return props.data.referenceData?.roles.map(r => ({ label: r, value: r }))
+if (inp === 'secret_id') return props.data.referenceData?.secrets.map(s => ({ label: s.name, value: s.id }))
+return null
+}
 
 </script>
 

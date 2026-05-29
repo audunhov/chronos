@@ -54,25 +54,44 @@ const pipelineId = route.params.id as string
 const isHistoryMode = route.name === 'pipeline-history'
 const executionId = route.params.id as string
 
-// Initialize Vue Flow
+// --- VUE FLOW STATE ---
 const { 
     nodes, edges, onConnect, addEdges, addNodes, removeEdges, removeNodes,
     updateNodeData, toObject, project, screenToFlowCoordinate,
     fitView, findNode, setCenter, onPaneReady
 } = useVueFlow('main')
 
+const containerRef = ref<HTMLElement | null>(null)
+const dataLoaded = ref(false)
+const loading = ref(false)
+const nodesInitialized = useNodesInitialized()
+const reaction = ref<any>(null)
+const execution = ref<any>(null)
+const forms = ref<any[]>([])
+const referenceData = ref({
+    organizations: [] as any[],
+    organs: [] as any[],
+    secrets: [] as any[],
+    roles: ['Leader', 'Deputy', 'Secretary', 'Treasurer', 'Member']
+})
+
+// --- HELPERS ---
 const safeFitView = () => {
+    if (!containerRef.value || containerRef.value.offsetWidth === 0) return
     try {
         fitView({ padding: 0.2, duration: 800 })
     } catch (e) {
-        console.warn('fitView failed, viewport probably not ready:', e)
+        // Silently fail, it's just a view adjustment
     }
 }
 
-onPaneReady(() => {
-    console.log('Vue Flow Pane Ready')
-    setTimeout(safeFitView, 200)
-})
+const flowKey = ref(0)
+watch(nodes, () => {
+    if (nodes.value.length > 0 && dataLoaded.value) {
+        flowKey.value++
+        nextTick(() => setTimeout(safeFitView, 300))
+    }
+}, { once: true })
 
 const getNodeColor = (node: any) => {
     if (node.type === 'trigger') return '#a855f7'
@@ -85,38 +104,11 @@ const getNodeColor = (node: any) => {
 const focusNode = (nodeId: string) => {
     const node = findNode(nodeId)
     if (node) {
-        setCenter(node.position.x + (node.dimensions?.width || 0) / 2, node.position.y + (node.dimensions?.height || 0) / 2, { zoom: 1.2, duration: 800 })
+        setCenter(node.position.x + (node.dimensions?.width || 200) / 2, node.position.y + (node.dimensions?.height || 150) / 2, { zoom: 1.2, duration: 800 })
     }
 }
 
-const nodesInitialized = useNodesInitialized()
-
-const loading = ref(false)
-const reaction = ref<any>(null)
-const execution = ref<any>(null)
-const forms = ref<any[]>([])
-const referenceData = ref({
-    organizations: [] as any[],
-    organs: [] as any[],
-    secrets: [] as any[],
-    roles: ['Leader', 'Deputy', 'Secretary', 'Treasurer', 'Member']
-})
-
-const handleTriggerEventChange = (newEvent: string) => {
-    updateTriggerOutputs(newEvent, findNode('trigger')?.data?.aggregateId)
-}
-
-const handleTriggerAggregateChange = (newAgg: string) => {
-    const trigger = findNode('trigger')
-    if (trigger) {
-        updateTriggerOutputs(trigger.data.event, newAgg)
-    }
-}
-
-const handleActionDataChange = (nodeId: string, key: string, val: any) => {
-    updateNodeData(nodeId, { [key]: val })
-}
-
+// --- API ACTIONS ---
 const fetchPipeline = async () => {
     loading.value = true
     try {
@@ -145,56 +137,22 @@ const fetchPipeline = async () => {
         if (r && r.config) {
             reaction.value = r
             
-            // Map nodes with necessary data and callbacks
-            const mappedNodes = (r.config.nodes || []).map((n: any) => {
-                const node: Node = {
-                    ...n,
-                    position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 },
-                    // Ensure basic properties exist to avoid undefined crashes. Use 1x1 as min to avoid NaN
-                    dimensions: n.dimensions || { width: 200, height: 150 }
-                }
-                
-                let highlightClass = ''
-                if (isHistoryMode && execution.value) {
-                    const logs = execution.value.logs || []
-                    const logEntry = logs.find((l: any) => l.node_id === node.id)
-                    if (logEntry) {
-                        highlightClass = logEntry.error ? 'ring-8 ring-red-500 shadow-[0_0_20px_rgba(239,68,68,1)]' : 'ring-8 ring-green-500 shadow-[0_0_20px_rgba(34,197,94,1)]'
-                    } else if (node.type === 'trigger') {
-                         highlightClass = 'ring-8 ring-green-500 shadow-[0_0_20px_rgba(34,197,94,1)]'
-                    } else {
-                        highlightClass = 'opacity-50 grayscale'
-                    }
-                }
-
-                node.data = {
-                    ...node.data,
-                    highlightClass,
+            // 1. Load Nodes First
+            nodes.value = (r.config.nodes || []).map((n: any) => ({
+                ...n,
+                position: n.position || { x: n.pos_x || 0, y: n.pos_y || 0 },
+                dimensions: n.dimensions || { width: 200, height: 150 },
+                data: {
+                    ...n.data,
                     referenceData: referenceData.value,
-                    onUpdateData: isHistoryMode ? undefined : handleActionDataChange
+                    onUpdateData: isHistoryMode ? undefined : (k: string, v: any) => updateNodeData(n.id, { [k]: v })
                 }
+            }))
 
-                if (node.type === 'trigger') {
-                    node.data = {
-                        ...node.data,
-                        aggregateId: r.trigger_aggregate_id || node.data?.aggregateId,
-                        availableEvents: Object.keys(TRIGGER_VAR_MAP),
-                        forms: forms.value,
-                        onUpdateEvent: isHistoryMode ? undefined : handleTriggerEventChange,
-                        onUpdateAggregate: isHistoryMode ? undefined : handleTriggerAggregateChange,
-                    }
-                }
-                
-                if (isHistoryMode) {
-                     node.draggable = false
-                     node.selectable = false
-                }
-                
-                return node
-            })
+            // Wait for nodes to be rendered and measured
+            await nextTick()
 
-            // Initialize state via assignments (allowed for reactive refs from hook)
-            nodes.value = mappedNodes
+            // 2. Load Edges Second
             edges.value = (r.config.edges || []).map((e: any) => ({
                 ...e,
                 type: 'smoothstep',
@@ -206,8 +164,7 @@ const fetchPipeline = async () => {
             if (r.trigger_event) {
                 await updateTriggerOutputs(r.trigger_event, r.trigger_aggregate_id || undefined)
             }
-
-            // Sync connected status initially
+            
             nextTick(() => {
                 updateAllConnectedInputs()
                 setTimeout(safeFitView, 500)
@@ -215,246 +172,10 @@ const fetchPipeline = async () => {
         }
         dataLoaded.value = true
     } catch (e) {
-        console.error(e)
+        console.error('Fetch failed:', e)
     } finally {
         loading.value = false
     }
-}
-
-const updateTriggerOutputs = async (event: string, aggregateId?: string) => {
-    const triggerNode = nodes.value.find((n: Node) => n.type === 'trigger')
-    if (!triggerNode) return
-
-    let outputs = TRIGGER_VAR_MAP[event] || ['timestamp']
-    
-    if (event === 'FormResponseSubmitted' && aggregateId) {
-        const form = forms.value.find((f: any) => f.id === aggregateId)
-        if (form && form.schema && (form.schema as any).fields) {
-            outputs = [
-                ...outputs,
-                ...(form.schema as any).fields.map((f: any) => `ans_${f.name}`)
-            ]
-        }
-    }
-    
-    updateNodeData(triggerNode.id, {
-        event,
-        aggregateId,
-        outputs,
-    })
-}
-
-const updateAllConnectedInputs = () => {
-    nodes.value.forEach(node => {
-        const edgesToNode = edges.value.filter(e => e.target === node.id)
-        const connectedInputs = new Set(edgesToNode.map(e => e.targetHandle))
-        
-        // We use stringify comparison to avoid redundant reactive updates
-        const current = Array.from(node.data.connectedInputs || []).sort().join(',')
-        const next = Array.from(connectedInputs).sort().join(',')
-        
-        if (current !== next) {
-            updateNodeData(node.id, { connectedInputs })
-        }
-    })
-}
-// Vue Flow Event Handlers
-onConnect((params: any) => {
-    addEdges([{
-        ...params,
-        type: 'smoothstep',
-        animated: true,
-        markerEnd: { type: 'arrowclosed', color: '#000' },
-        style: { strokeWidth: 4, stroke: '#000' }
-    }])
-    nextTick(updateAllConnectedInputs)
-})
-
-const dataLoaded = ref(false)
-
-const fetchPipeline = async () => {
-// Auto-fit view when nodes are initialized
-watch(nodesInitialized, (isInit) => {
-    if (isInit && nodes.value.length > 0) {
-        nextTick(() => {
-            setTimeout(safeFitView, 500)
-        })
-    }
-})
-
-const checkValidConnection = (connection: Connection) => {
-    if (connection.source === connection.target) return false;
-    const targetNode = findNode(connection.target);
-    if (targetNode?.type === 'trigger') return false;
-    return true;
-}
-
-const nodeErrorsMap = computed(() => {
-    const errorMap: Record<string, string[]> = {}
-    const trigger = nodes.value.find(n => n.type === 'trigger')
-    
-    nodes.value.forEach(node => {
-        const errors: string[] = []
-        
-        // Check connectivity (except for trigger itself)
-        if (trigger) {
-            const visited = new Set<string>()
-            const queue = [trigger.id]
-            while (queue.length > 0) {
-                const curr = queue.shift()!
-                visited.add(curr)
-                edges.value.filter(e => e.source === curr).forEach(e => {
-                    if (!visited.has(e.target)) queue.push(e.target)
-                })
-            }
-            if (!visited.has(node.id)) {
-                errors.push('Node er ikke koblet til flyten')
-            }
-        }
-
-        // Check required inputs for actions
-        if (node.type === 'action' && node.data.inputs) {
-            node.data.inputs.forEach((inp: string) => {
-                const hasConnection = edges.value.some(e => e.target === node.id && e.targetHandle === inp)
-                if (!hasConnection && !node.data[inp]) {
-                    errors.push(`Mangler inndata for "${inp}"`)
-                }
-            })
-        }
-
-        // Check logic nodes
-        if (node.type === 'logic') {
-            if (!node.data.value1 && !edges.value.some(e => e.target === node.id && e.targetHandle === 'v1')) {
-                errors.push('Mangler Verdi 1')
-            }
-        }
-
-        if (errors.length > 0) {
-            errorMap[node.id] = errors
-        }
-    })
-    return errorMap
-})
-
-const validationErrors = computed(() => {
-    const errors: string[] = []
-    const trigger = nodes.value.find(n => n.type === 'trigger')
-    if (!trigger) errors.push('Mangler Start-node (Trigger)')
-    
-    Object.values(nodeErrorsMap.value).forEach(nodeErrors => {
-        errors.push(...nodeErrors)
-    })
-    
-    return Array.from(new Set(errors)) // Unique errors
-})
-
-// Sync errors to node data for visual feedback
-watch(nodeErrorsMap, (newMap) => {
-    nodes.value.forEach(node => {
-        const hasError = !!newMap[node.id]
-        if (node.data.hasError !== hasError) {
-            updateNodeData(node.id, { hasError, errorMessages: newMap[node.id] || [] })
-        }
-    })
-}, { deep: true })
-
-const addActionNode = (type: string, position: { x: number, y: number } = { x: 400, y: 100 }) => {
-    const def = ACTION_DEFS[type]
-    const id = `node_${Date.now()}`
-    const newNode: Node = {
-        id,
-        type: 'action',
-        position,
-        dimensions: { width: 200, height: 150 }, // Default dimensions to prevent crashes
-        data: {
-            label: type,
-            inputs: def?.inputs || [],
-            outputs: def?.outputs || [],
-            referenceData: referenceData.value,
-            onUpdateData: (key: string, val: any) => handleActionDataChange(id, key, val)
-        }
-    }
-    addNodes([newNode])
-}
-
-const addLogicNode = (type: 'if' | 'filter' | 'list_filter', position: { x: number, y: number } = { x: 400, y: 100 }) => {
-    const id = `node_${Date.now()}`
-    const newNode: Node = {
-        id,
-        type: 'logic',
-        position,
-        dimensions: { width: 240, height: 200 }, // Default dimensions
-        data: { 
-            type, 
-            operator: '==', 
-            value1: '', 
-            value2: '',
-            inputs: type === 'list_filter' ? ['list', 'operator', 'value'] : ['v1', 'v2', 'operator'],
-            onUpdateData: (key: string, val: any) => handleActionDataChange(id, key, val)
-        }
-    }
-    addNodes([newNode])
-}
-
-const onDragStart = (event: DragEvent, type: string, nodeClass: 'action' | 'logic' | 'code') => {
-    if (event.dataTransfer) {
-        event.dataTransfer.setData('application/vueflow', JSON.stringify({ type, nodeClass }))
-        event.dataTransfer.effectAllowed = 'move'
-    }
-}
-
-const onDrop = (event: DragEvent) => {
-    const dataStr = event.dataTransfer?.getData('application/vueflow')
-    if (!dataStr) return
-    const { type, nodeClass } = JSON.parse(dataStr)
-    
-    const position = screenToFlowCoordinate({
-        x: event.clientX,
-        y: event.clientY,
-    })
-
-    if (nodeClass === 'action') addActionNode(type, position)
-    else if (nodeClass === 'logic') addLogicNode(type as any, position)
-    else if (nodeClass === 'code') {
-        const id = `node_${Date.now()}`
-        addNodes([{ 
-            id, 
-            type: 'code', 
-            position, 
-            dimensions: { width: 380, height: 300 }, // Default dimensions
-            data: { 
-                code: '', 
-                inputs: [], 
-                referenceData: referenceData.value,
-                onUpdateData: (key: string, val: any) => handleActionDataChange(id, key, val)
-            } 
-        }])
-    }
-}
-
-const usePreset = (preset: any) => {
-    if (nodes.value.length > 1 && !confirm('Dette vil slette ditt nåværende design og erstatte det med malen. Er du sikker?')) return
-
-    nodes.value = preset.nodes.map((n: any) => ({
-        ...n,
-        data: {
-            ...n.data,
-            referenceData: referenceData.value,
-            onUpdateData: handleActionDataChange
-        }
-    }))
-    
-    edges.value = preset.edges.map((e: any) => ({
-        ...e,
-        type: 'smoothstep',
-        animated: true,
-        markerEnd: { type: 'arrowclosed', color: '#000' },
-        style: { strokeWidth: 4, stroke: '#000' }
-    }))
-
-    nextTick(() => {
-        setTimeout(safeFitView, 500)
-    })
 }
 
 const save = async () => {
@@ -462,88 +183,163 @@ const save = async () => {
     const triggerNode = nodes.value.find((n: any) => n.type === 'trigger')
     if (triggerNode) {
         flow.trigger_event = triggerNode.data.event
-        flow.trigger_aggregate_id = triggerNode.data.aggregateId
+        flow.trigger_aggregate_id = triggerNode.data.aggregateId || null
     }
 
     try {
         await api.updateReaction(pipelineId, flow)
-        alert('Pipeline lagret og publisert!')
+        alert('Pipeline lagret!')
     } catch (e: any) {
-        alert('Feil ved lagring: ' + e.message)
+        console.error('Save error:', e)
+        alert('Feil ved lagring: ' + (e.response?.data?.message || e.message))
     }
 }
 
 const deletePipeline = async () => {
-    if (!confirm('Er du sikker på at du vil slette denne pipelinen?')) return
+    if (!confirm('Slette pipelinen?')) return
     try {
         await api.deleteReaction(pipelineId)
         router.back()
-    } catch (e: any) {
-        alert('Feil ved sletting: ' + e.message)
+    } catch (e: any) { alert(e.message) }
+}
+
+// --- CORE LOGIC ---
+const updateTriggerOutputs = async (event: string, aggregateId?: string) => {
+    const triggerNode = nodes.value.find((n: Node) => n.type === 'trigger')
+    if (!triggerNode) return
+
+    let outputs = TRIGGER_VAR_MAP[event] || ['timestamp']
+    if (event === 'FormResponseSubmitted' && aggregateId) {
+        const form = forms.value.find((f: any) => f.id === aggregateId)
+        if (form?.schema?.fields) {
+            outputs = [...outputs, ...form.schema.fields.map((f: any) => `ans_${f.name}`)]
+        }
     }
+    
+    updateNodeData(triggerNode.id, { 
+        event, 
+        aggregateId, 
+        outputs,
+        availableEvents: Object.keys(TRIGGER_VAR_MAP),
+        forms: forms.value,
+        onUpdateEvent: (e: string) => updateTriggerOutputs(e, aggregateId),
+        onUpdateAggregate: (a: string) => updateTriggerOutputs(event, a)
+    })
 }
 
-const showTestModal = ref(false)
-const testDataInput = ref('{\n  "user_id": "123",\n  "email": "test@test.no",\n  "list": [1,2,3]\n}')
-const testLogs = ref<string[]>([])
-const isTesting = ref(false)
-const openTestModal = () => {
-    showTestModal.value = true
-    testLogs.value = []
+const updateAllConnectedInputs = () => {
+    nodes.value.forEach(node => {
+        const connectedInputs = new Set(edges.value.filter(e => e.target === node.id).map(e => e.targetHandle))
+        const current = Array.from(node.data.connectedInputs || []).sort().join(',')
+        const next = Array.from(connectedInputs).sort().join(',')
+        if (current !== next) updateNodeData(node.id, { connectedInputs })
+    })
 }
-const runTest = async () => {
-    try {
-        const triggerData = JSON.parse(testDataInput.value)
-        isTesting.value = true
-        testLogs.value = ['Starter test...']
-        
-        nodes.value.forEach(node => {
-            if (node.type === 'code') updateNodeData(node.id, { logs: [] })
-        })
 
-        const flow: any = toObject()
-        const triggerNode = nodes.value.find((n: any) => n.type === 'trigger')
-        if (triggerNode) {
-            flow.trigger_event = triggerNode.data.event
-            flow.trigger_aggregate_id = triggerNode.data.aggregateId
-        }
+onConnect((params: any) => {
+    addEdges([{ ...params, type: 'smoothstep', animated: true, markerEnd: { type: 'arrowclosed', color: '#000' }, style: { strokeWidth: 4, stroke: '#000' } }])
+    nextTick(updateAllConnectedInputs)
+})
 
-        const res = await api.testPipeline(pipelineId, triggerData, flow)
-        if (res.success) {
-            testLogs.value.push('✅ Test fullført uten feil.')
-        } else {
-            testLogs.value.push('❌ Test feilet: ' + res.error)
+const checkValidConnection = (connection: Connection) => {
+    if (connection.source === connection.target) return false;
+    const targetNode = findNode(connection.target);
+    return targetNode?.type !== 'trigger';
+}
+
+const nodeErrorsMap = computed(() => {
+    const errorMap: Record<string, string[]> = {}
+    const trigger = nodes.value.find(n => n.type === 'trigger')
+    nodes.value.forEach(node => {
+        const errors: string[] = []
+        if (trigger) {
+            const visited = new Set<string>()
+            const queue = [trigger.id]
+            while (queue.length > 0) {
+                const curr = queue.shift()!
+                visited.add(curr)
+                edges.value.filter(e => e.source === curr).forEach(e => { if (!visited.has(e.target)) queue.push(e.target) })
+            }
+            if (!visited.has(node.id)) errors.push('Ikke koblet til flyt')
         }
-        
-        if (res.logs) {
-            testLogs.value.push(...res.logs)
-            res.logs.forEach((log: string) => {
-                nodes.value.forEach(node => {
-                    if (node.type === 'code' && (log.includes(node.id) || log.includes('JS Error'))) {
-                        const currentLogs = node.data.logs || []
-                        updateNodeData(node.id, { logs: [...currentLogs, log] })
-                    }
-                })
+        if (node.type === 'action' && node.data.inputs) {
+            node.data.inputs.forEach((inp: string) => {
+                if (!edges.value.some(e => e.target === node.id && e.targetHandle === inp) && !node.data[inp]) {
+                    errors.push(`Mangler ${inp}`)
+                }
             })
         }
-    } catch (e: any) {
-        testLogs.value = ['❌ Ugyldig JSON eller systemfeil: ' + e.message]
-    } finally {
-        isTesting.value = false
+        if (errors.length > 0) errorMap[node.id] = errors
+    })
+    return errorMap
+})
+
+const validationErrors = computed(() => {
+    const errors: string[] = []
+    if (!nodes.value.some(n => n.type === 'trigger')) errors.push('Mangler Start-node')
+    Object.values(nodeErrorsMap.value).forEach(ne => errors.push(...ne))
+    return Array.from(new Set(errors))
+})
+
+watch(nodeErrorsMap, (newMap) => {
+    nodes.value.forEach(node => {
+        const hasError = !!newMap[node.id]
+        if (node.data.hasError !== hasError) updateNodeData(node.id, { hasError, errorMessages: newMap[node.id] || [] })
+    })
+}, { deep: true })
+
+// --- INTERACTION ---
+const onDrop = (event: DragEvent) => {
+    const dataStr = event.dataTransfer?.getData('application/vueflow')
+    if (!dataStr) return
+    const { type, nodeClass } = JSON.parse(dataStr)
+    const position = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+    const id = `node_${Date.now()}`
+
+    const newNode: Node = {
+        id, position, type: nodeClass, dimensions: { width: 200, height: 150 },
+        data: { 
+            label: type, 
+            inputs: ACTION_DEFS[type]?.inputs || (nodeClass === 'logic' ? ['v1', 'v2'] : []), 
+            outputs: ACTION_DEFS[type]?.outputs || (nodeClass === 'logic' ? ['true', 'false'] : ['result']),
+            referenceData: referenceData.value,
+            onUpdateData: (k: string, v: any) => updateNodeData(id, { [k]: v })
+        }
     }
+    addNodes([newNode])
+}
+
+const usePreset = async (preset: any) => {
+    if (nodes.value.length > 1 && !confirm('Erstatt nåværende design?')) return
+    
+    // 1. Load Nodes
+    nodes.value = preset.nodes.map((n: any) => ({ 
+        ...n, 
+        data: { 
+            ...n.data, 
+            referenceData: referenceData.value, 
+            onUpdateData: (k: string, v: any) => updateNodeData(n.id, { [k]: v }) 
+        } 
+    }))
+    
+    await nextTick()
+
+    // 2. Load Edges
+    edges.value = preset.edges.map((e: any) => ({ 
+        ...e, 
+        type: 'smoothstep', 
+        animated: true, 
+        markerEnd: { type: 'arrowclosed', color: '#000' }, 
+        style: { strokeWidth: 4, stroke: '#000' } 
+    }))
+    
+    nextTick(() => setTimeout(safeFitView, 500))
 }
 
 const deleteSelected = () => {
-    const selectedEdges = edges.value.filter((e: any) => e.selected)
-    const selectedNodes = nodes.value.filter((n: any) => n.selected && n.type !== 'trigger')
-    
-    if (selectedEdges.length > 0) {
-        removeEdges(selectedEdges)
-    }
-    if (selectedNodes.length > 0) {
-        removeNodes(selectedNodes)
-    }
-    
+    const sn = nodes.value.filter((n: any) => n.selected && n.type !== 'trigger')
+    const se = edges.value.filter((e: any) => e.selected)
+    if (sn.length) removeNodes(sn); if (se.length) removeEdges(se)
     nextTick(updateAllConnectedInputs)
 }
 
@@ -551,19 +347,11 @@ onMounted(async () => {
     await fetchPipeline()
     if (nodes.value.length === 0) {
         addNodes([{
-            id: 'trigger',
-            type: 'trigger',
-            position: { x: 50, y: 50 },
-            dimensions: { width: 220, height: 150 },
-            data: {
-                event: 'MembershipCreated',
-                outputs: TRIGGER_VAR_MAP['MembershipCreated'],
-                availableEvents: Object.keys(TRIGGER_VAR_MAP),
-                forms: forms.value,
-                onUpdateEvent: handleTriggerEventChange,
-                onUpdateAggregate: handleTriggerAggregateChange
-            }
-        }])    }
+            id: 'trigger', type: 'trigger', position: { x: 50, y: 50 }, dimensions: { width: 220, height: 150 },
+            data: { event: 'MembershipCreated', outputs: TRIGGER_VAR_MAP['MembershipCreated'], availableEvents: Object.keys(TRIGGER_VAR_MAP), forms: forms.value, 
+            onUpdateEvent: (e: string) => updateTriggerOutputs(e), onUpdateAggregate: (a: string) => updateTriggerOutputs(findNode('trigger')?.data.event, a) }
+        }])
+    }
 })
 </script>
 
@@ -577,12 +365,11 @@ onMounted(async () => {
         </div>
         <div class="flex gap-4">
             <BButton v-if="!isHistoryMode" @click="deletePipeline" variant="danger" class="text-xs py-2 px-6">SLETT PIPELINE</BButton>
-            <BButton @click="openTestModal" variant="secondary" class="text-xs py-2 px-6">TEST KJØRING</BButton>
             <BButton v-if="!isHistoryMode" @click="save" variant="primary" class="text-xs py-2 px-10 shadow-[4px_4px_0px_0px_white]">PUBLISER ENDRINGER</BButton>
         </div>
     </header>
 
-    <div class="flex-1 flex overflow-hidden min-h-0 relative">
+    <div class="flex-1 flex overflow-hidden min-h-0 relative" ref="containerRef">
         <div v-if="loading" class="absolute inset-0 z-[60] bg-orange-50/80 backdrop-blur-sm flex items-center justify-center">
             <div class="flex flex-col items-center gap-4">
                 <div class="w-16 h-16 border-8 border-black border-t-yellow-400 animate-spin"></div>
@@ -607,7 +394,7 @@ onMounted(async () => {
             <section class="space-y-4">
                 <div class="flex justify-between items-center border-b-4 border-black pb-2">
                     <h4 class="font-black uppercase text-xs">Navigator</h4>
-                    <BButton @click="fitView({ padding: 0.2, duration: 800 })" variant="ghost" class="text-[8px] py-0 px-2 border-black">SENTRÉR</BButton>
+                    <BButton @click="safeFitView" variant="ghost" class="text-[8px] py-0 px-2 border-black">SENTRÉR</BButton>
                 </div>
                 <div class="max-h-64 overflow-y-auto space-y-1 border-2 border-black p-2 bg-gray-50">
                     <button 
@@ -630,9 +417,8 @@ onMounted(async () => {
             <section class="space-y-4">
                 <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Logikk</h4>
                 <div class="grid grid-cols-2 gap-2">
-                    <button draggable="true" @dragstart="onDragStart($event, 'if', 'logic')" @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 font-black italic cursor-grab">IF / THEN</button>
-                    <button draggable="true" @dragstart="onDragStart($event, 'list_filter', 'logic')" @click="addLogicNode('list_filter')" class="brutalist-btn bg-blue-100 text-[10px] p-2 hover:bg-blue-200 font-black italic cursor-grab">FILTER (LIST)</button>
-                    <button draggable="true" @dragstart="onDragStart($event, 'javascript', 'code')" @click="onDrop({ clientX: 400, clientY: 200, dataTransfer: { getData: () => JSON.stringify({ type: 'javascript', nodeClass: 'code' }) } } as any)" class="brutalist-btn bg-gray-900 text-white text-[10px] p-2 hover:bg-black font-black italic cursor-grab col-span-2">CUSTOM JS CODE</button>
+                    <button draggable="true" @click="onDrop({ clientX: 400, clientY: 200, dataTransfer: { getData: () => JSON.stringify({ type: 'if', nodeClass: 'logic' }) } } as any)" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 font-black italic cursor-grab">IF / THEN</button>
+                    <button draggable="true" @click="onDrop({ clientX: 400, clientY: 200, dataTransfer: { getData: () => JSON.stringify({ type: 'list_filter', nodeClass: 'logic' }) } } as any)" class="brutalist-btn bg-blue-100 text-[10px] p-2 hover:bg-blue-200 font-black italic cursor-grab">FILTER (LIST)</button>
                 </div>
             </section>
             <section class="space-y-4">
@@ -640,19 +426,13 @@ onMounted(async () => {
                 <div class="space-y-2">
                     <button v-for="type in Object.keys(ACTION_DEFS)" :key="type" 
                         draggable="true"
-                        @dragstart="onDragStart($event, type, 'action')"
-                        @click="addActionNode(type)"
+                        @click="onDrop({ clientX: 400, clientY: 200, dataTransfer: { getData: () => JSON.stringify({ type, nodeClass: 'action' }) } } as any)"
                         class="brutalist-btn w-full bg-white text-left text-[10px] p-2 hover:bg-blue-50 font-black italic cursor-grab"
                     >
                         + {{ type }}
                     </button>
                 </div>
             </section>
-            <div class="brutalist-card bg-black text-white p-4 !shadow-none italic text-[8px] leading-relaxed">
-                STATUS: Markér en kobling og trykk [Backspace] for å slette. <br><br>
-                TIPS: Dra og slipp (Drag & Drop) noder fra menyen inn på lerretet, eller klikk på dem for å legge til.<br><br>
-                NYTT: TEST KJØRING lar deg se resultatet uten å endre data permanent.
-            </div>
             <section v-if="validationErrors.length > 0" class="space-y-2 bg-red-50 border-4 border-red-500 p-2">
                 <h4 class="font-black uppercase text-[10px] text-red-600 border-b-2 border-red-500 pb-1">Advarsler ({{ validationErrors.length }})</h4>
                 <ul class="text-[9px] space-y-1 font-mono text-red-800">
@@ -666,7 +446,10 @@ onMounted(async () => {
         <main class="flex-1 relative overflow-hidden min-w-0" @dragover.prevent @drop="onDrop">
             <VueFlow 
                 v-if="dataLoaded"
+                :key="flowKey"
                 id="main"
+                :nodes="nodes"
+                :edges="edges"
                 :node-types="nodeTypes"
                 :is-valid-connection="checkValidConnection"
                 class="brutalist-flow"
@@ -683,73 +466,14 @@ onMounted(async () => {
             </VueFlow>
         </main>
     </div>
-
-    <div v-if="showTestModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-        <div class="bg-white border-8 border-black p-6 w-full max-w-2xl shadow-[16px_16px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh]">
-            <div class="flex justify-between items-center border-b-4 border-black pb-4 mb-4">
-                <h2 class="text-2xl font-black uppercase italic tracking-tighter">Test Pipeline</h2>
-                <button @click="showTestModal = false" class="bg-red-500 text-white border-4 border-black w-8 h-8 font-black hover:bg-black hover:text-red-500">X</button>
-            </div>
-            <div class="flex-1 overflow-y-auto space-y-4 min-h-0 flex flex-col">
-                <div class="flex-1 flex flex-col min-h-[200px]">
-                    <label class="text-xs font-black uppercase mb-2">Simulert Trigger-data (JSON)</label>
-                    <textarea v-model="testDataInput" class="flex-1 w-full bg-orange-50 border-4 border-black p-4 font-mono text-xs focus:outline-none focus:bg-yellow-50 resize-none"></textarea>
-                </div>
-                <div class="h-64 flex flex-col">
-                    <label class="text-xs font-black uppercase mb-2">Utførelseslogg</label>
-                    <div class="flex-1 bg-black text-green-400 p-4 font-mono text-[10px] overflow-y-auto border-4 border-black">
-                        <div v-for="(log, i) in testLogs" :key="i" class="mb-1">{{ log }}</div>
-                        <div v-if="testLogs.length === 0" class="text-gray-500 italic">Kjør test for å se output...</div>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-4 pt-4 border-t-4 border-black text-right shrink-0">
-                <BButton @click="runTest" :disabled="isTesting" variant="primary" class="w-full text-sm py-3">
-                    {{ isTesting ? 'KJØRER...' : 'KJØR TEST' }}
-                </BButton>
-            </div>
-        </div>
-    </div>
   </div>
 </template>
 
 <style>
-.brutalist-flow {
-    width: 100%;
-    height: 100%;
-}
-.brutalist-flow .vue-flow__node {
-    padding: 0;
-    border: none;
-    background: transparent;
-}
-.brutalist-flow .vue-flow__edge-path {
-    stroke: black !important;
-    stroke-width: 6 !important;
-}
-.brutalist-flow .vue-flow__edge.selected .vue-flow__edge-path {
-    stroke: #f87171 !important;
-}
-.brutalist-flow .vue-flow__connection-path {
-    stroke: black !important;
-    stroke-width: 4 !important;
-    stroke-dasharray: 8;
-}
-.brutalist-flow .vue-flow__handle {
-    width: 14px;
-    height: 14px;
-    border: 3px solid black;
-    background: white;
-}
-.brutalist-flow .vue-flow__controls {
-    border: 4px solid black;
-    box-shadow: 8px 8px 0px 0px rgba(0,0,0,1);
-}
-.brutalist-flow .vue-flow__controls-button {
-    border-bottom: 4px solid black;
-    background: white;
-}
-.brutalist-flow .vue-flow__controls-button:hover {
-    background: #fbbf24;
-}
+.brutalist-flow { width: 100%; height: 100%; min-height: 500px; }
+.brutalist-flow .vue-flow__node { padding: 0; border: none; background: transparent; }
+.brutalist-flow .vue-flow__edge-path { stroke: black !important; stroke-width: 6 !important; }
+.brutalist-flow .vue-flow__edge.selected .vue-flow__edge-path { stroke: #f87171 !important; }
+.brutalist-flow .vue-flow__handle { width: 14px; height: 14px; border: 3px solid black; background: white; }
+.brutalist-flow .vue-flow__controls { border: 4px solid black; box-shadow: 8px 8px 0px 0px rgba(0,0,0,1); }
 </style>

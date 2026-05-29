@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, markRaw, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { VueFlow, useVueFlow, useNodesInitialized, type Node, type Edge, type Connection, type NodeChange, type EdgeChange } from '@vue-flow/core'
+import { VueFlow, useVueFlow, useNodesInitialized, type Node, type Edge, type Connection, type NodeChange, type EdgeChange, applyNodeChanges, applyEdgeChanges } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -56,8 +56,23 @@ const executionId = route.params.id as string
 const { 
     nodes, edges, onConnect, addEdges, addNodes, removeEdges, 
     updateNodeData, toObject, project, screenToFlowCoordinate,
-    onNodesChange, onEdgesChange, fitView, findNode
-} = useVueFlow()
+    onNodesChange, onEdgesChange, fitView, findNode, setCenter
+} = useVueFlow('main')
+
+const getNodeColor = (node: any) => {
+    if (node.type === 'trigger') return '#a855f7'
+    if (node.type === 'logic') return '#eab308'
+    if (node.type === 'action') return '#3b82f6'
+    if (node.type === 'code') return '#22c55e'
+    return '#000'
+}
+
+const focusNode = (nodeId: string) => {
+    const node = findNode(nodeId)
+    if (node) {
+        setCenter(node.position.x + (node.dimensions?.width || 0) / 2, node.position.y + (node.dimensions?.height || 0) / 2, { zoom: 1.2, duration: 800 })
+    }
+}
 
 const nodesInitialized = useNodesInitialized()
 
@@ -226,14 +241,23 @@ onConnect((params: any) => {
     nextTick(updateAllConnectedInputs)
 })
 
-onEdgesChange(() => {
+onNodesChange((changes) => {
+    applyNodeChanges(changes, nodes.value)
+})
+
+onEdgesChange((changes) => {
+    applyEdgeChanges(changes, edges.value)
     nextTick(updateAllConnectedInputs)
 })
 
 // Auto-fit view when nodes are initialized
 watch(nodesInitialized, (isInit) => {
-    if (isInit) {
-        fitView({ padding: 0.2 })
+    if (isInit && nodes.value.length > 0) {
+        nextTick(() => {
+            setTimeout(() => {
+                fitView({ padding: 0.2, duration: 800 })
+            }, 500)
+        })
     }
 })
 
@@ -244,48 +268,83 @@ const checkValidConnection = (connection: Connection) => {
     return true;
 }
 
-const validationErrors = computed(() => {
-    const errors: string[] = []
+const nodeErrorsMap = computed(() => {
+    const errorMap: Record<string, string[]> = {}
     const trigger = nodes.value.find(n => n.type === 'trigger')
-    if (!trigger) {
-        errors.push('Mangler Start-node (Trigger)')
-        return errors
-    }
-    const visited = new Set<string>()
-    const queue = [trigger.id]
-    while (queue.length > 0) {
-        const curr = queue.shift()!
-        visited.add(curr)
-        const outgoingEdges = edges.value.filter(e => e.source === curr)
-        for (const edge of outgoingEdges) {
-            if (!visited.has(edge.target)) {
-                queue.push(edge.target)
+    
+    nodes.value.forEach(node => {
+        const errors: string[] = []
+        
+        // Check connectivity (except for trigger itself)
+        if (trigger) {
+            const visited = new Set<string>()
+            const queue = [trigger.id]
+            while (queue.length > 0) {
+                const curr = queue.shift()!
+                visited.add(curr)
+                edges.value.filter(e => e.source === curr).forEach(e => {
+                    if (!visited.has(e.target)) queue.push(e.target)
+                })
+            }
+            if (!visited.has(node.id)) {
+                errors.push('Node er ikke koblet til flyten')
             }
         }
-    }
-    nodes.value.forEach(node => {
-        if (!visited.has(node.id)) {
-            errors.push(`Node "${node.data.label || node.data.type || node.id}" er ikke koblet til flyten.`)
-        }
+
+        // Check required inputs for actions
         if (node.type === 'action' && node.data.inputs) {
             node.data.inputs.forEach((inp: string) => {
                 const hasConnection = edges.value.some(e => e.target === node.id && e.targetHandle === inp)
                 if (!hasConnection && !node.data[inp]) {
-                    errors.push(`Node "${node.data.label}" mangler inndata for "${inp}".`)
+                    errors.push(`Mangler inndata for "${inp}"`)
                 }
             })
         }
+
+        // Check logic nodes
+        if (node.type === 'logic') {
+            if (!node.data.value1 && !edges.value.some(e => e.target === node.id && e.targetHandle === 'v1')) {
+                errors.push('Mangler Verdi 1')
+            }
+        }
+
+        if (errors.length > 0) {
+            errorMap[node.id] = errors
+        }
     })
-    return errors
+    return errorMap
 })
 
-const addActionNode = (type: string) => {
+const validationErrors = computed(() => {
+    const errors: string[] = []
+    const trigger = nodes.value.find(n => n.type === 'trigger')
+    if (!trigger) errors.push('Mangler Start-node (Trigger)')
+    
+    Object.values(nodeErrorsMap.value).forEach(nodeErrors => {
+        errors.push(...nodeErrors)
+    })
+    
+    return Array.from(new Set(errors)) // Unique errors
+})
+
+// Sync errors to node data for visual feedback
+watch(nodeErrorsMap, (newMap) => {
+    nodes.value.forEach(node => {
+        const hasError = !!newMap[node.id]
+        if (node.data.hasError !== hasError) {
+            updateNodeData(node.id, { hasError, errorMessages: newMap[node.id] || [] })
+        }
+    })
+}, { deep: true })
+
+const addActionNode = (type: string, position: { x: number, y: number } = { x: 400, y: 100 }) => {
     const def = ACTION_DEFS[type]
     const id = `node_${Date.now()}`
     const newNode: Node = {
         id,
         type: 'action',
-        position: { x: 400, y: 100 },
+        position,
+        dimensions: { width: 200, height: 150 }, // Default dimensions to prevent crashes
         data: {
             label: type,
             inputs: def?.inputs || [],
@@ -297,12 +356,13 @@ const addActionNode = (type: string) => {
     addNodes([newNode])
 }
 
-const addLogicNode = (type: 'if' | 'filter' | 'list_filter') => {
+const addLogicNode = (type: 'if' | 'filter' | 'list_filter', position: { x: number, y: number } = { x: 400, y: 100 }) => {
     const id = `node_${Date.now()}`
     const newNode: Node = {
         id,
         type: 'logic',
-        position: { x: 400, y: 100 },
+        position,
+        dimensions: { width: 240, height: 200 }, // Default dimensions
         data: { 
             type, 
             operator: '==', 
@@ -332,14 +392,15 @@ const onDrop = (event: DragEvent) => {
         y: event.clientY,
     })
 
-    if (nodeClass === 'action') addActionNode(type)
-    else if (nodeClass === 'logic') addLogicNode(type as any)
+    if (nodeClass === 'action') addActionNode(type, position)
+    else if (nodeClass === 'logic') addLogicNode(type as any, position)
     else if (nodeClass === 'code') {
         const id = `node_${Date.now()}`
         addNodes([{ 
             id, 
             type: 'code', 
             position, 
+            dimensions: { width: 380, height: 300 }, // Default dimensions
             data: { 
                 code: '', 
                 inputs: [], 
@@ -479,6 +540,29 @@ onMounted(async () => {
         
         <aside v-if="!isHistoryMode" class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)] shrink-0">
             <section class="space-y-4">
+                <div class="flex justify-between items-center border-b-4 border-black pb-2">
+                    <h4 class="font-black uppercase text-xs">Navigator</h4>
+                    <BButton @click="fitView({ padding: 0.2, duration: 800 })" variant="ghost" class="text-[8px] py-0 px-2 border-black">SENTRÉR</BButton>
+                </div>
+                <div class="max-h-64 overflow-y-auto space-y-1 border-2 border-black p-2 bg-gray-50">
+                    <button 
+                        v-for="node in nodes" :key="node.id"
+                        @click="focusNode(node.id)"
+                        class="w-full text-left px-2 py-1 text-[10px] font-black uppercase italic hover:bg-yellow-400 border border-transparent hover:border-black transition-all flex justify-between items-center group"
+                    >
+                        <span class="truncate">
+                            <span v-if="node.type === 'trigger'" class="text-purple-600">⚡</span>
+                            <span v-else-if="node.type === 'logic'" class="text-orange-600">?</span>
+                            <span v-else-if="node.type === 'action'" class="text-blue-600">+</span>
+                            <span v-else-if="node.type === 'code'" class="text-green-600">JS</span>
+                            {{ node.data?.label || node.data?.type || (node.type === 'trigger' ? 'START' : node.id) }}
+                        </span>
+                        <span class="text-[8px] opacity-0 group-hover:opacity-100 font-mono">GO →</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="space-y-4">
                 <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Logikk</h4>
                 <div class="grid grid-cols-2 gap-2">
                     <button draggable="true" @dragstart="onDragStart($event, 'if', 'logic')" @click="addLogicNode('if')" class="brutalist-btn bg-yellow-100 text-[10px] p-2 hover:bg-yellow-200 font-black italic cursor-grab">IF / THEN</button>
@@ -525,7 +609,13 @@ onMounted(async () => {
             >
                 <Background pattern-color="#000" :gap="20" />
                 <Controls position="bottom-right" />
-                <MiniMap pannable zoomable class="!border-4 !border-black !rounded-none !shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] !bg-white" />
+                <MiniMap 
+                    pannable 
+                    zoomable 
+                    :node-color="getNodeColor"
+                    :node-stroke-color="'#000'"
+                    class="!border-4 !border-black !rounded-none !shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] !bg-white" 
+                />
             </VueFlow>
         </main>
     </div>

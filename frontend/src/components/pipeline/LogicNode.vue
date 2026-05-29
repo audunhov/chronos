@@ -22,7 +22,11 @@ const isRef2 = computed(() => props.data.value2 && props.data.value2.includes('.
 </script>
 
 <template>
-  <div :class="['bg-yellow-50 border-4 border-black p-4 min-w-[240px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-yellow-400' : '', props.data.highlightClass || '']">
+  <div :class="['bg-yellow-50 border-4 border-black p-4 min-w-[240px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-yellow-400' : '', props.data.hasError ? 'border-red-500 shadow-[8px_8px_0px_0px_rgba(239,68,68,1)]' : '', props.data.highlightClass || '']">
+    <div v-if="data.hasError" class="mb-2 bg-red-500 text-white p-1 text-[8px] font-black uppercase flex flex-col gap-0.5">
+        <div v-for="err in data.errorMessages" :key="err">! {{ err }}</div>
+    </div>
+
     <div class="mb-4 relative">
         <Handle 
             type="target" 

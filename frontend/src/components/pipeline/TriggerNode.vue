@@ -14,7 +14,11 @@ const props = defineProps<NodeProps<{
 </script>
 
 <template>
-  <div :class="['bg-purple-50 border-4 border-black p-4 min-w-[220px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-purple-400' : '', props.data.highlightClass || '']">
+  <div :class="['bg-purple-50 border-4 border-black p-4 min-w-[220px] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all', selected ? 'ring-8 ring-purple-400' : '', props.data.hasError ? 'border-red-500 shadow-[8px_8px_0px_0px_rgba(239,68,68,1)]' : '', props.data.highlightClass || '']">
+    <div v-if="data.hasError" class="mb-2 bg-red-500 text-white p-1 text-[8px] font-black uppercase flex flex-col gap-0.5">
+        <div v-for="err in data.errorMessages" :key="err">! {{ err }}</div>
+    </div>
+
     <div class="mb-4 space-y-2">
         <p class="text-[8px] font-black uppercase text-purple-600">Start (Trigger)</p>
         <select 

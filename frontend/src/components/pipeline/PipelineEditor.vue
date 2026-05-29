@@ -312,6 +312,11 @@ const onDrop = (event: DragEvent) => {
 const usePreset = async (preset: any) => {
     if (nodes.value.length > 1 && !confirm('Erstatt nåværende design?')) return
     
+    // Clear everything first to reset internal handle indexes
+    nodes.value = []
+    edges.value = []
+    await nextTick()
+
     // 1. Load Nodes
     nodes.value = preset.nodes.map((n: any) => ({ 
         ...n, 
@@ -322,7 +327,8 @@ const usePreset = async (preset: any) => {
         } 
     }))
     
-    await nextTick()
+    // Crucial: Wait for browser to layout custom nodes and Vue Flow to measure handles
+    await new Promise(resolve => setTimeout(resolve, 150))
 
     // 2. Load Edges
     edges.value = preset.edges.map((e: any) => ({ 

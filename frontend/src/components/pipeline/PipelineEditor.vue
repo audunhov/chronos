@@ -18,6 +18,8 @@ import ActionNode from './ActionNode.vue'
 import LogicNode from './LogicNode.vue'
 import CodeNode from './CodeNode.vue'
 
+import { PIPELINE_PRESETS } from './presets'
+
 const nodeTypes = {
   trigger: markRaw(TriggerNode),
   action: markRaw(ActionNode),
@@ -423,6 +425,31 @@ const onDrop = (event: DragEvent) => {
     }
 }
 
+const usePreset = (preset: any) => {
+    if (nodes.value.length > 1 && !confirm('Dette vil slette ditt nåværende design og erstatte det med malen. Er du sikker?')) return
+
+    nodes.value = preset.nodes.map((n: any) => ({
+        ...n,
+        data: {
+            ...n.data,
+            referenceData: referenceData.value,
+            onUpdateData: handleActionDataChange
+        }
+    }))
+    
+    edges.value = preset.edges.map((e: any) => ({
+        ...e,
+        type: 'smoothstep',
+        animated: true,
+        markerEnd: { type: 'arrowclosed', color: '#000' },
+        style: { strokeWidth: 4, stroke: '#000' }
+    }))
+
+    nextTick(() => {
+        fitView({ padding: 0.2, duration: 800 })
+    })
+}
+
 const save = async () => {
     const flow: any = toObject()
     const triggerNode = nodes.value.find((n: any) => n.type === 'trigger')
@@ -551,6 +578,19 @@ onMounted(async () => {
         </div>
         
         <aside v-if="!isHistoryMode" class="w-80 bg-white border-r-8 border-black p-6 space-y-10 overflow-y-auto z-40 shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)] shrink-0">
+            <section class="space-y-4">
+                <h4 class="font-black uppercase text-xs border-b-4 border-black pb-2">Maler (Presets)</h4>
+                <div class="space-y-2">
+                    <button v-for="p in PIPELINE_PRESETS" :key="p.name" 
+                        @click="usePreset(p)"
+                        class="w-full text-left p-3 border-4 border-black hover:bg-yellow-400 transition-colors group"
+                    >
+                        <div class="font-black uppercase text-[10px] italic">{{ p.name }}</div>
+                        <div class="text-[8px] font-bold text-gray-500 mt-1 group-hover:text-black">{{ p.description }}</div>
+                    </button>
+                </div>
+            </section>
+
             <section class="space-y-4">
                 <div class="flex justify-between items-center border-b-4 border-black pb-2">
                     <h4 class="font-black uppercase text-xs">Navigator</h4>

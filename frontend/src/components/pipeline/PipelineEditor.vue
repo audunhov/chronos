@@ -255,15 +255,6 @@ onConnect((params: any) => {
     nextTick(updateAllConnectedInputs)
 })
 
-onNodesChange((changes) => {
-    applyNodeChanges(changes, nodes.value)
-})
-
-onEdgesChange((changes) => {
-    applyEdgeChanges(changes, edges.value)
-    nextTick(updateAllConnectedInputs)
-})
-
 // Auto-fit view when nodes are initialized
 watch(nodesInitialized, (isInit) => {
     if (isInit && nodes.value.length > 0) {
@@ -659,8 +650,6 @@ onMounted(async () => {
         <main class="flex-1 relative overflow-hidden min-w-0" @dragover.prevent @drop="onDrop">
             <VueFlow 
                 id="main"
-                :nodes="nodes"
-                :edges="edges"
                 :node-types="nodeTypes"
                 :is-valid-connection="checkValidConnection"
                 class="brutalist-flow"
@@ -708,6 +697,10 @@ onMounted(async () => {
 </template>
 
 <style>
+.brutalist-flow {
+    width: 100%;
+    height: 100%;
+}
 .brutalist-flow .vue-flow__node {
     padding: 0;
     border: none;
